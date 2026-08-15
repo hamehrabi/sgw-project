@@ -1,0 +1,200 @@
+/* Only what makes the shell legible. Anything more is out of scope for TASK-001. */
+
+:root {
+  --ink: #14181d;
+  --muted: #5a646e;
+  --line: #d5dae0;
+  --page: #ffffff;
+  --refusal: #a3231b;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  color: var(--ink);
+  background: var(--page);
+  font: 16px/1.5 system-ui, -apple-system, 'Segoe UI', sans-serif;
+}
+
+.shell--centred {
+  max-width: 22rem;
+  margin: 4rem auto;
+  padding: 0 1rem;
+}
+
+.shell__bar {
+  display: flex;
+  gap: 1rem;
+  align-items: center;
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid var(--line);
+}
+
+.shell__title {
+  font-weight: 600;
+}
+
+.shell__identity {
+  margin-left: auto;
+  color: var(--muted);
+}
+
+.scenario-selector {
+  color: var(--muted);
+  border: 1px dashed var(--line);
+  border-radius: 4px;
+  padding: 0.25rem 0.5rem;
+}
+
+.shell__content {
+  padding: 1.5rem 1rem;
+}
+
+.sign-in {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.sign-in input {
+  padding: 0.5rem;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  font: inherit;
+}
+
+.sign-in button {
+  margin-top: 0.75rem;
+  padding: 0.5rem;
+  font: inherit;
+  cursor: pointer;
+}
+
+/* Colour is never the only signal — the message says what happened (WCAG 2.1 AA, Q-013). */
+.sign-in__refusal {
+  color: var(--refusal);
+  margin: 0.5rem 0 0;
+}
+
+/* --- TASK-002: the joined asset view and its two notices --- */
+
+.data-age {
+  color: var(--muted);
+  font-size: 0.9rem;
+  margin: 0 0 1rem;
+}
+
+/* Not dismissible, and it does not rely on colour alone — the text says the age (Q-013). */
+.staleness {
+  border: 1px solid #b58100;
+  background: #fff8e6;
+  padding: 0.6rem 0.8rem;
+  border-radius: 4px;
+  margin-bottom: 1rem;
+}
+
+.integrity {
+  border: 1px solid #6a5acd;
+  background: #f4f2ff;
+  padding: 0.6rem 0.8rem;
+  border-radius: 4px;
+  margin-bottom: 1rem;
+}
+
+.upload {
+  border: 1px dashed var(--line);
+  border-radius: 6px;
+  padding: 1rem;
+  margin-bottom: 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.upload__hint { color: var(--muted); font-size: 0.9rem; margin: 0.25rem 0 0; }
+
+.review-count {
+  border-left: 3px solid #b58100;
+  padding-left: 0.6rem;
+  color: var(--ink);
+}
+
+.assets { border-collapse: collapse; width: 100%; font-size: 0.94rem; }
+.assets th, .assets td { border-bottom: 1px solid var(--line); padding: 0.5rem; text-align: left; vertical-align: top; }
+.assets th { font-weight: 600; text-transform: capitalize; }
+
+.row--review { background: #fffbf0; }
+
+.row__codes { color: var(--muted); font-size: 0.85rem; }
+
+.badge {
+  display: inline-block;
+  margin-top: 0.25rem;
+  padding: 0.05rem 0.4rem;
+  border: 1px solid #b58100;
+  border-radius: 3px;
+  font-size: 0.78rem;
+}
+
+/* Estimated is distinct in weight and in words, never in colour alone (BR-003, Q-013). */
+.value--estimated { font-style: italic; }
+.value__tag { font-style: normal; font-size: 0.82rem; }
+.value__age, .value__source { color: var(--muted); font-size: 0.82rem; }
+.value--absent { color: var(--muted); font-style: italic; }
+
+/* --- TASK-003: the ranked risk list --- */
+
+.uncalibrated {
+  border: 1px solid #6a5acd;
+  background: #f4f2ff;
+  padding: 0.6rem 0.8rem;
+  border-radius: 4px;
+  margin-bottom: 1rem;
+}
+
+.risk__rank { font-variant-numeric: tabular-nums; text-align: right; width: 3rem; }
+.risk__score { white-space: nowrap; font-variant-numeric: tabular-nums; }
+.risk--unscored { background: #f6f6f8; }
+
+.risk__group {
+  text-align: left;
+  font-weight: 400;
+  padding-top: 1rem;
+  color: var(--muted);
+  border-bottom: 2px solid var(--line);
+}
+
+/* Band and strength both carry their word — colour is never the only signal (Q-013). */
+.band { display: inline-block; padding: 0.05rem 0.4rem; border-radius: 3px; border: 1px solid; font-size: 0.82rem; }
+.band--high { border-color: #a3231b; background: #fdeceb; }
+.band--medium { border-color: #b58100; background: #fff8e6; }
+.band--low { border-color: #2f7a45; background: #eefaf1; }
+.band--unscored { border-color: var(--muted); background: #f0f0f2; font-style: italic; }
+
+.strength { display: inline-block; min-width: 4.6rem; font-size: 0.8rem; font-weight: 600; }
+.strength--strong { color: #a3231b; }
+.strength--moderate { color: #b58100; }
+.strength--slight { color: var(--muted); }
+
+.reasons { padding: 0.5rem 0 0.75rem; }
+.reasons__list { margin: 0 0 0.75rem; padding-left: 1rem; }
+.reasons__list li { margin-bottom: 0.3rem; }
+.reasons__unscored { margin: 0 0 0.35rem; }
+.reasons__unscored-note { margin: 0; color: var(--muted); }
+.reasons__values { border-collapse: collapse; font-size: 0.86rem; }
+.reasons__values caption { text-align: left; color: var(--muted); padding-bottom: 0.25rem; }
+.reasons__values th, .reasons__values td { padding: 0.15rem 0.6rem 0.15rem 0; text-align: left; font-weight: 400; }
+.reasons__provenance { color: var(--muted); }
+
+/* --- TASK-004: recording a decision --- */
+.decision { border: 1px solid var(--line); border-radius: 6px; padding: 1rem; margin: 1rem 0 2rem; display: flex; flex-direction: column; gap: 0.4rem; }
+.decision fieldset { border: 0; padding: 0; margin: 0 0 0.5rem; }
+.decision legend { font-weight: 600; padding: 0; }
+.decision__option { margin-right: 1rem; }
+.decision textarea { min-height: 4rem; font: inherit; padding: 0.5rem; border: 1px solid var(--line); border-radius: 4px; }
+.decision button { align-self: flex-start; padding: 0.5rem 0.9rem; font: inherit; cursor: pointer; }
+.decision__note { color: var(--muted); font-size: 0.88rem; margin: 0.25rem 0 0; }
+.decision--done { border-color: #2f7a45; background: #eefaf1; }

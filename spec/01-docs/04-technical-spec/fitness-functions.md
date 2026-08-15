@@ -18,18 +18,65 @@ still has the shape you decided on**. They are different jobs; you need both.
 
 | ID | Guards | Type | Check | Threshold | Runs | On failure |
 |---|---|---|---|---|---|---|
-| FF-001 | Simplicity / feasibility | Structural | No import cycle between the scoring module, the API layer, and the data layer | 0 cycles | **Not wired yet** | Block merge, once wired |
-| FF-002 | Simplicity / feasibility | Structural | No view module imports the scoring module directly; a view reaches it through the API layer only (REQ-NF-005) | 0 direct imports | **Not wired yet** | Block merge, once wired |
-| FF-003 | Reliability / graceful failure | Operational | Remove or corrupt each prepared data file in turn, then open every screen | 0 empty screens and 0 error pages; every stale render states its age | **Not wired yet** | Block merge, once wired |
-| FF-004 | Auditability | Security | Both the `BEFORE UPDATE` and `BEFORE DELETE` triggers exist on `decision_records`, **and** an `UPDATE` issued against that table is refused by the database (ADR-004) | 2 triggers present; 0 statements accepted | **Not wired yet** | Block merge, once wired |
-| FF-005 | Auditability | Structural | Every delivered ranking has a matching `decision_records` row of kind `recommendation` | 0 rankings without a row | **Not wired yet** | Block merge, once wired |
-| FF-006 | Reliability / graceful failure | Operational | Each of the seven known data defects in `data-and-integration-spec.md` §4 is caught by its own check, run against a fixture that deliberately contains all seven | 7 of 7 caught | **Not wired yet** | Block merge, once wired |
-| FF-007 | Auditability | Security | No model-phrased reason reaches a screen naming a factor absent from the computed input, or asserting a strength the arithmetic did not produce (ADR-009 rule 3) | 0 displayed outputs unmatched to their input | **Not wired yet** | Block merge, once wired |
+| FF-001 | Simplicity / feasibility | Structural | No import cycle between the scoring module, the API layer, and the data layer | 0 cycles | **`ci/fitness.py`** | Block merge |
+| FF-002 | Simplicity / feasibility | Structural | **(a)** `scoring` is imported by `api` and by nothing else — not by `store`, not by `loader`. **(b)** No scoring constant appears anywhere in `frontend/`: ADR-007's four weights, its band boundaries, and its reason-strength thresholds (REQ-NF-005) | 0 imports outside `api`; 0 scoring constants in the frontend | **`ci/fitness.py`** | Block merge |
+| FF-003 | Reliability / graceful failure | Operational | Remove or corrupt each prepared data file in turn, then open every screen. **(a)** every screen renders and states its data's age; **(b)** the loss is named to an admin; **(c)** no view reads a source file at render time (CHG-013) | 0 empty screens; 0 error pages; 1 named integrity notice per removed file; 0 file reads on a render path | **Not wired yet** | Block merge, once wired |
+| FF-004 | Auditability | Security | Both the `BEFORE UPDATE` and `BEFORE DELETE` triggers exist on `decision_records`, **and** an `UPDATE` issued against that table is refused by the database (ADR-004) | 2 triggers present; 0 statements accepted | **`ci/fitness.py`** | Block merge |
+| FF-005 | Auditability | Structural | Every delivered ranking has a matching `decision_records` row of kind `recommendation` | 0 rankings without a row | **`ci/fitness.py`** | Block merge |
+| FF-006 | Reliability / graceful failure | Operational | Each of the seven known data defects in `data-and-integration-spec.md` §4 is caught by its own check, run against a fixture that deliberately contains all seven | 7 of 7 caught | **`ci/fitness.py`** | Block merge |
+| FF-007 | Auditability | Security | No model-phrased reason reaches a screen naming a factor absent from the computed input, or asserting a strength the arithmetic did not produce (ADR-009 rule 3) | 0 displayed outputs unmatched to their input | **`ci/fitness.py`** | Block merge |
 
-**Every row says `Not wired yet`, and that is the truthful state.** No pipeline exists on this
-project — Round 7 writes the task that builds one and wires these seven into it. Writing `CI` and
-`Block merge` today would assert enforcement nobody has built, which is exactly the decay this
-file exists to catch, committed by the file itself.
+**Six of the seven now run; one still says `Not wired yet`, and that is the truthful state.**
+`ci/fitness.py` is the gate, written during TASK-002 (CHG-010). It was mutation-checked before
+this table was edited — hiding defect 4 from the fixture drove FF-006 to `caught 6 of 7`, and a
+scoring constant pasted into a view drove FF-002(b) to fail — because a gate nobody has watched
+fail is the same decoration as a gate nobody has built. **Every row was mutation-checked before
+its `Runs` cell was edited** — FF-004 by renaming a trigger away (`trigger
+decision_records_no_update is absent`), FF-005 by skipping the recommendation append
+(`0 recommendation rows for one delivered ranking`). FF-003 prints its own `NOT WIRED` line
+every run, with the reason, rather than being silently absent.
+
+The original wording of this paragraph is worth keeping, because it still governs FF-003:
+writing `CI` and `Block merge` for a check nobody has built asserts enforcement nobody earned,
+which is exactly the decay this file exists to catch, committed by the file itself.
+
+**FF-007 was wired by TASK-003, before the model it was written for exists.** ADR-009's rule 3
+is *validate the output against its input before display*, and the phrasing layer is blocked on
+Q-029 and Q-030 — so the check guards the computed text today and guards the model unchanged on
+the day it arrives. Wiring the validation before there is anything untrusted to validate is the
+cheap direction: the alternative is writing the guard and its first real subject in the same
+change, with nothing to tell you the guard works. It was mutation-checked first — a reason
+claiming an unearned strength drives it to `contributed 3% and claims Strong, not Slight`.
+
+**Two of the seven are wired by TASK-002 rather than by TASK-010** (decided at the TASK-001
+review). FF-001 needs enough modules for a cycle to be possible and FF-006 needs the seven-defect
+fixture; TASK-002 is the task that first creates both. Wiring them there is cheaper than
+retrofitting a gate across four tasks of drift. **The same principle then consumed TASK-010
+entirely:** FF-007 was wired by TASK-003 when the scorer existed, and FF-004 and FF-005 by
+TASK-004 when `decision_records` and its triggers did. Each was wired by the task that created
+the thing it inspects, which is the only moment the check can be seen to fail. What is left of
+TASK-010 is FF-003 alone.
+
+**FF-003 was restated in CHG-013, before the views were written, for the same reason as FF-002
+and caught one step earlier.** Its old form assumed a render path that reads source files, which
+`technical-spec.md` §6 forbids — every read is served from stored results. Against the
+architecture actually built, *remove a file and open every screen* could not fail: nothing on a
+render path opens a file, so no screen could break. Clause **(c)** is what gives it teeth, and
+it is a guard for the future rather than for today: the first feature that reads a scenario file
+at render time — a download, a replay view — is the one this catches. **Say that plainly rather
+than letting (a) read as a live guard**, because a check that passes for want of anything to test
+is the decoration this register exists to find.
+
+**FF-002 was restated in CHG-010, at the TASK-001 review, because ADR-008 had quietly killed
+it.** Its old form — *no view module imports the scoring module directly* — described a
+single-process codebase. Under ADR-008 the views are TypeScript in a different process and
+**cannot** import a Python module, so the check could never fail: a gate that cannot fail
+governs nothing, and this register exists to catch exactly that. ADR-008 called the split a
+*stronger* version of the boundary and it is, but the strength is structural, so what was left
+to check moved. The new form checks the two ways scoring can still leak: reached from the wrong
+module inside the backend, or **reimplemented in the frontend for display** — which is the
+failure ADR-008's own consequences predicted in writing, and which the old check would have
+watched happen.
 
 **FF-004 changed shape in Round 5 and kept its guarantee** (CHG-002). ADR-002 chose an embedded
 store with no role system, so the original check — *the application role holds no `UPDATE`

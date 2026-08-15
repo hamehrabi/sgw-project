@@ -1,0 +1,38 @@
+# Explicit, so `ruff check` means the same thing on every machine and in the gate.
+line-length = 100
+target-version = "py312"
+
+[lint]
+select = [
+    "E", "W",   # pycodestyle
+    "F",        # pyflakes
+    "I",        # import order
+    "UP",       # pyupgrade
+    "B",        # bugbear
+    "SIM",      # simplify
+    "BLE",      # blind except
+    "S",        # bandit — security
+]
+ignore = [
+    "S101",  # `assert` is how the tests assert
+]
+
+[lint.per-file-ignores]
+# The suite reaches into the store and issues raw SQL on purpose: STEST-008 and the
+# acceptance-criterion-6 test must assert against the DATABASE, not the service layer.
+"spec/03-tests/**" = ["S105", "S106", "S608"]
+
+# The browser harness seeds fixture accounts, so it holds a fixture password by design — and
+# `PASSWORD_HASH_COST` trips the same rule for having "PASSWORD" in its name while being a
+# cost factor. Scoped to this one file rather than switched off, so a real credential
+# appearing anywhere else still fails the gate.
+"ci/e2e_backend.py" = ["S105", "S106"]
+
+# The scenario generator is seeded fixture data, not a source of secrets. `random` is the
+# correct choice here precisely because it is reproducible — a cryptographic generator would
+# make the performance test measure a different input on every run.
+"ci/synthetic.py" = ["S311"]
+
+# FF-004 and FF-005 need a live application with a storm loaded, so the gate seeds a throwaway
+# account in a temp database. Same fixture-credential exemption as the browser harness.
+"ci/fitness.py" = ["S106"]

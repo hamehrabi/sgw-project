@@ -168,10 +168,22 @@ invent, and each invented answer would be indistinguishable from a decision.
 
 | Date | Mistake | Rule added |
 |---|---|---|
+| 2026-08-15 | **Every test pinned a configured value to its shipped default.** TASK-001's suite used ADR-006's 240 minutes and 12 hours everywhere, so a hard-coded 240 would have passed all of it. The code was right; the suite could not have told. Found by a directed check at review, not by the suite. | **When a value comes from configuration, at least one test must use a value that is not the default.** Otherwise the test proves the number, not that it was read. The same applies to every unset value in `.env.example`. |
+| 2026-08-15 | **A durable-state property was asserted only within one process lifetime.** Every session test used a single application instance, so sessions held in memory would have passed — while ADR-002 promises "a restart is not an incident". | **Where a decision says state is durable, one test must cross a restart:** build a second application over the same database and assert the state is still there, and that ended state has not returned. |
 
-No code has been written, so no mistake has been made. The first row is owed the first time a
-review finds one — and the row is worth more than the fix, because the fix repairs one bug and
-the row repairs the process.
+| 2026-08-15 | **A specification described states with nowhere to keep them.** Three times: ADR-003 required a server-side session and §3 defined no `sessions` table (CHG-008); `frontend-component-spec.md` required `AppShell` to know the role and no endpoint returned it (CHG-009); §9.5 specified a parse job with four states while §9.1 forbade the scenario row existing until it succeeded, leaving the job's own state homeless (CHG-012). | **When a document defines states, a lifecycle, or a thing a screen must know, check the schema has a row that can hold it and an endpoint that can return it — before writing code against it.** A described state with no storage is not a design; it is a gap that looks like one, and it will be found at the worst moment by whoever builds against it. Check at the *Prepare* stage, where a change entry is cheap. |
+
+The first two rows arrived together, at TASK-001's review, and they are the same mistake wearing
+two coats: **a test that never varies the condition it claims to check.** Neither found a bug.
+Both found an assertion nobody was making — which is what a review is for, and why the row is
+worth more than the fix.
+
+| 2026-08-15 | **Two of the seven defect checks fired for the wrong reason.** Defect 3 reported whenever `weather.csv` held any asset-linked row rather than when gusts were absent; defect 6 matched "routine", so an inspection note tripped a repair-record check. Both fired on every dataset, so FF-006 counted 7 of 7 with five real checks behind it. Neither affected the data handling — only the reporting, and the gate built on it. | **For any check that reports a condition, assert the silent case too: feed it data without the condition and require no finding.** A check that cannot be absent is not detecting anything. The general technique, and the one that found these: **remove each condition from the fixture in turn and require exactly the matching finding to disappear** — a suite that only ever sees the dirty fixture cannot tell one check from five. |
+
+**The third row is a different kind and the most expensive one so far.** It cost three change
+entries across two tasks, each found mid-build, and every one of them would have been visible in
+five minutes of reading the schema against the document that described the behaviour. It is
+cheap to check and it keeps being skipped, which is exactly what makes it worth a standing rule.
 
 **Three failures are predicted rather than observed**, and are worth watching for from day one:
 dropping an unscorable asset from a ranking because omitting the row is the tidiest code;

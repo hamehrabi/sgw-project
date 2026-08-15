@@ -5,7 +5,7 @@
 > response formats, or ownership behavior while coding.
 
 **Base path:** `/api/v1`
-**Auth model:** Email and password, with a server-side session checked on every request (ADR-003). Session lifetime is not yet set — see Q-021.
+**Auth model:** Email and password, with a server-side session checked on every request (ADR-003). Session lifetime is **240 minutes idle, 12 hours absolute** (ADR-006, which answered Q-021 — this line said "not yet set" until CHG-009 corrected it).
 **Version:** API v1.0
 
 ---
@@ -15,7 +15,9 @@
 | Method | Path | Purpose | Requirement | Permission |
 |---|---|---|---|---|
 | POST | `/api/v1/auth/session` | Sign in. | REQ-NF-002 | Public |
+| GET | `/api/v1/auth/session` | Read the current user and role. | REQ-NF-002, REQ-R-001 | Signed in |
 | DELETE | `/api/v1/auth/session` | Sign out. | REQ-NF-002 | Signed in |
+| GET | `/api/v1/health` | Liveness. Reports that the process is up and its store reachable, and nothing about the data inside. | REQ-NF-003 | Public |
 | POST | `/api/v1/scenarios` | Load a prepared storm scenario. | REQ-F-010 | Admin only |
 | GET | `/api/v1/scenarios/{scenario_id}` | Read the loaded scenario and its current forecast revision. | REQ-F-010 | Signed in |
 | GET | `/api/v1/scenarios/{scenario_id}/assets` | The joined asset view — one record per asset, each value with its source and age. | REQ-F-001 | Signed in |
@@ -26,6 +28,14 @@
 | GET | `/api/v1/scenarios/{scenario_id}/jobs` | The shared damage and repair board. | REQ-F-007 | Signed in |
 | POST | `/api/v1/damage-reports/{report_id}/dismiss` | Dismiss a false alarm in one action. | REQ-F-008 | Signed in |
 | GET | `/api/v1/scenarios/{scenario_id}/decisions` | Read the decision record. | REQ-F-009 | Admin only |
+
+**Two rows were added by CHG-009, during TASK-001.** `GET /api/v1/auth/session` exists because
+`frontend-component-spec.md` requires `AppShell` to "render no content until the signed-in role
+is known", and a page reload leaves the browser holding a session cookie and nothing else — the
+role had no way back. Keeping it somewhere the browser can read instead would put a permission
+input in the one place `technical-spec.md` §3 says it must never be. `GET /api/v1/health` was
+required by TASK-001 and by `runtime-and-scale.md` §1, which refuses on principle to rate-limit
+it, and was the only endpoint the build needed that this index did not carry.
 
 **No endpoint writes to anything outside this platform.** There is no path, at any version, by
 which a request here becomes a command to a system that controls the grid or the water network

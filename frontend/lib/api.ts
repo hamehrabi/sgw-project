@@ -1,0 +1,191 @@
+/**
+ * The only way the interface reaches data.
+ *
+ * The frontend never queries the store — it calls the API (ADR-008). Nothing here computes
+ * a score, a rank, or a band: that is `scoring/`, it lives in the other process, and a view
+ * cannot import it even by accident (FF-002).
+ */
+
+export type Role = 'admin' | 'user'
+
+export interface Identity {
+  user_id: string
+  name: string
+  role: Role
+}
+
+export interface ApiError {
+  code: string
+  message: string
+}
+
+export class RequestFailed extends Error {
+  readonly status: number
+  readonly code: string
+
+  constructor(status: number, body: ApiError) {
+    super(body.message)
+    this.status = status
+    this.code = body.code
+  }
+}
+
+async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
+  const response = await fetch(path, {
+    ...init,
+    // The session cookie is HttpOnly: script cannot read it, and this is what attaches it.
+    credentials: 'same-origin',
+    headers: { 'Content-Type': 'application/json', ...init.headers },
+  })
+
+  if (response.status === 204) {
+    return undefined as T
+  }
+
+  const body = await response.json().catch(() => ({
+    code: 'unreachable',
+    message: 'We could not reach the server. Please try again.',
+  }))
+
+  if (!response.ok) {
+    throw new RequestFailed(response.status, body as ApiError)
+  }
+  return body as T
+}
+
+/** One displayable value. Source and age are structural, never optional (BR-003). */
+export interface AssetValue {
+  name: string
+  value: string | number | null
+  source: string | null
+  observed_at: string | null
+  estimated: boolean
+}
+
+export interface Asset {
+  asset_id: string
+  external_ids: string[]
+  name: string
+  type: string
+  location: { lat: number; lon: number }
+  match_status: 'matched' | 'needs_review'
+  values: AssetValue[]
+}
+
+export interface Integrity {
+  intact: boolean
+  missing_files: string[]
+  affects: string[]
+}
+
+export interface Scenario {
+  scenario_id: string
+  name: string
+  forecast_revision: number
+  loaded_at: string
+  forecast_issued_at: string | null
+  /** Stated always, never only when bad — silence must not teach the reader "fresh". */
+  data_age_hours: number | null
+  stale: boolean
+  stale_after_hours: number
+  integrity: Integrity
+}
+
+export interface AssetPage {
+  scenario_id: string
+  items: Asset[]
+  needs_review_count: number
+}
+
+export interface Reason {
+  factor: string
+  strength: 'Strong' | 'Moderate' | 'Slight'
+  contribution: number
+  /** Plain words, computed alongside the score. This is what ships if no model phrases it. */
+  detail: string
+}
+
+export interface RiskItem {
+  asset_id: string
+  external_ids: string[]
+  name: string
+  type: string
+  rank: number | null
+  score: number | null
+  band: 'High' | 'Medium' | 'Low' | null
+  reasons: Reason[]
+  /** Set when the asset could not be scored. It is in the ranking, not ranked. */
+  unscored_reason: string | null
+  weight_set_version: string
+  match_status: 'matched' | 'needs_review'
+  values: AssetValue[]
+}
+
+export interface DecisionRecorded {
+  decision_record_id: string
+  recommendation_id: string
+  decision: string
+  actor_user_id: string
+  occurred_at: string
+}
+
+export const recommendations = {
+  /** Records a decision. **Never dispatches anything** (BR-001). */
+  decide: (recommendationId: string, decision: string, note: string | null) =>
+    request<DecisionRecorded>(`/api/v1/recommendations/${recommendationId}/decision`, {
+      method: 'POST',
+      body: JSON.stringify({ decision, note }),
+    }),
+}
+
+export interface Ranking {
+  scenario_id: string
+  /** The audit row this delivered ranking was recorded as (FF-005). Decisions reference it. */
+  recommendation_id: string
+  forecast_revision: number
+  computed_at: string | null
+  weight_set_version: string | null
+  /** Always false in version one — the weights have never been validated (ADR-007, CHG-014). */
+  weights_calibrated: boolean
+  items: RiskItem[]
+  total: number
+}
+
+export const scenarios = {
+  risks: (id: string) => request<Ranking>(`/api/v1/scenarios/${id}/risks`),
+
+  read: (id: string) => request<Scenario>(`/api/v1/scenarios/${id}`),
+  assets: (id: string) => request<AssetPage>(`/api/v1/scenarios/${id}/assets`),
+
+  load: async (name: string, sourceNote: string, files: FileList | File[]) => {
+    const form = new FormData()
+    form.append('name', name)
+    form.append('source_note', sourceNote)
+    for (const file of Array.from(files)) form.append('files', file)
+
+    const response = await fetch('/api/v1/scenarios', {
+      method: 'POST',
+      credentials: 'same-origin',
+      body: form, // no Content-Type: the browser sets the multipart boundary
+    })
+    const body = await response.json().catch(() => ({
+      code: 'unreachable',
+      message: 'We could not reach the server. Please try again.',
+    }))
+    if (!response.ok) throw new RequestFailed(response.status, body as ApiError)
+    return body as { scenario_id: string; forecast_revision: number }
+  },
+}
+
+export const auth = {
+  signIn: (email: string, password: string) =>
+    request<Identity>('/api/v1/auth/session', {
+      method: 'POST',
+      body: JSON.stringify({ email, password }),
+    }),
+
+  /** Who am I, and in which role. The only way `AppShell` learns the role after a reload. */
+  current: () => request<Identity>('/api/v1/auth/session'),
+
+  signOut: () => request<void>('/api/v1/auth/session', { method: 'DELETE' }),
+}

@@ -33,13 +33,29 @@ place.
 source PRD §7 dataset table; none is invented.
 
 ```
-manifest.json    scenario_id, storm_name, forecast_issued_at, file list, row counts
+manifest.json    scenario_id, storm_name, forecast_issued_at, file list, row counts,
+                 service_areas[]: service_area_id, customer_count       (CHG-011)
 assets.csv       asset_id, name, type, lat, lon, install_year, flood_zone,
                  condition_rating, condition_source, condition_date
 maintenance.csv  asset_id, inspection_date, condition_rating, notes
 weather.csv      grid_cell_id, asset_id, valid_time, wind_gust_mph, rainfall_in
-outages.csv      asset_id, failure_time, storm_id      (historical, replay only)
+outages.csv      asset_id, failure_time, storm_id,                      (historical, replay only)
+                 customers_out, service_area_id                         (CHG-011)
 ```
+
+**Three columns were added by CHG-011, and Q-017's "nothing invented" is broken knowingly.**
+Defects 4 and 5 in §4 are about a customer total that is wrong and an outage count that is
+impossible, and neither could be represented in the format this section originally defined —
+there was no total to be broken and no population to exceed. That left §1's claim that "the
+shipped fixture carries all seven defects on purpose" unachievable, and FF-006's threshold of
+7 of 7 permanently unreachable. The choice was to invent three columns or to retire two defect
+rules the source PRD measured in real files; the columns are the smaller loss.
+
+**`service_areas` lives in the manifest rather than in a fifth CSV** so that Q-017's answer —
+*a manifest plus four CSVs, nothing else* — still describes the format. It is scenario-level
+reference data of the same kind as the row counts already there, and it is what makes the
+population figure in defect 4 **independent** of the outage rows it checks: a total cannot
+validate itself.
 
 | Item | Demo scale |
 |---|---|

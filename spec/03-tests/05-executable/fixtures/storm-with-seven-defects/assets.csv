@@ -1,0 +1,9 @@
+asset_id,name,type,lat,lon,install_year,flood_zone,condition_rating,condition_source,condition_date
+SS-1042,Northgate Substation,substation,34.0522,-118.2437,1984,VE,3,inspection,2026-06-02
+TX-4471,Northgate Substation,substation,34.0522,-118.2437,1984,VE,3,inspection,2026-06-02
+SS-2210,Harbor Pump Station,pump,33.7701,-118.1937,1998,AE,2,inspection,2020-04-11
+PS-9001,Harbour Pump Stn No.2,pump,33.7701,-118.1937,2001,AE,4,inspection,2025-11-30
+LN-3312,Ridgeline Feeder 12,line,34.1478,-118.1445,1972,X,2,estimated,2026-05-20
+SS-5566,Eastbank Substation,substation,34.0195,-118.4912,1990,AE,4,inspection,2026-07-15
+PL-7788,Delta Water Plant,plant,33.9416,-118.4085,1965,VE,1,inspection,2019-02-28
+LN-8899,Coastal Feeder 3,line,33.8121,-118.3901,2010,X,,,

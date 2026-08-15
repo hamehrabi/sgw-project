@@ -64,7 +64,7 @@ Format: `REQ-NF-###: [Quality condition with a measurable limit].`
 |---|---|---|
 | REQ-NF-001 | Performance | Re-rank 220 assets in **under 5 s**; page load **under 2 s**; reason panel open **under 300 ms**. Measured on the fixture (Q-017), not promised — which is what separates these from the source PRD's own figures, which that document labels as starting targets. |
 | REQ-NF-002 | Security | Only signed-in users may reach any view. An admin and a user see different things (§3). Every sign-in, every read of the decision record, and every accept, change or reject is recorded. |
-| REQ-NF-003 | Reliability | If a prepared data file is missing or malformed, the system must show the last good picture, clearly marked as stale and dated, rather than an empty screen or an error page. It must name which file failed. |
+| REQ-NF-003 | Reliability | **Two senses, separated by CHG-013.** **(a) Age:** every screen states how old the data it shows is, and says so as a non-dismissible banner once the data passes `SCENARIO_STALE_AFTER_HOURS`. **(b) Integrity:** if a prepared file is missing or malformed, the system names which file failed and never shows an empty screen or an error page in its place. At load, a failure leaves the previously loaded storm serving. After load, the joined view is unaffected — it is served from stored rows (`technical-spec.md` §6) — and the loss is reported to an admin rather than degrading a screen that is still correct. |
 | REQ-NF-004 | Usability | An operator under storm conditions reaches any critical action in two actions or fewer, without a manual. |
 | REQ-NF-005 | Maintainability | The risk-scoring logic must be separable from the views that display it, so that the core subdomain can change without touching the planning view or the dispatch board. |
 | REQ-NF-006 | Accessibility | **WCAG 2.1 AA**, as a constraint rather than a driver — the three drivers stand. `frontend-component-spec.md` already carries the two rules that do most of the work: `RiskList` is operable by keyboard alone, and colour is never the only signal for a rank. |
@@ -172,14 +172,14 @@ Format: Given–When–Then. These become the acceptance tests in
 | ID | Requirement | Criterion |
 |---|---|---|
 | AC-001 | REQ-F-001 | **Given** a prepared scenario whose asset records carry different codes for the same asset, **When** the joined view is built, **Then** each asset appears once and every value shows its source and its age. |
-| AC-002 | REQ-F-001 | **Given** a prepared data file that is missing or malformed, **When** the joined view is built, **Then** the last good picture is shown, marked stale and dated, and the failing file is named. |
+| AC-002 | REQ-F-001 | **Given** a prepared data file that is missing or malformed **at load**, **When** the load is attempted, **Then** no scenario is created, the previously loaded storm still serves, and the failing file is named. **Given** a file that becomes unreadable **after** load, **Then** the joined view is unchanged and correct, and the loss is named to an admin (CHG-013). |
 | AC-003 | REQ-F-002 | **Given** a signed-in operations manager and a loaded scenario, **When** they open the planning view, **Then** every asset in the scenario appears in one list ordered by risk. |
 | AC-004 | REQ-F-003 | **Given** any risk rank on any screen, **When** a user looks at it, **Then** the reasons behind it are shown in plain words alongside it, never behind a separate request. |
 | AC-005 | REQ-F-004 | **Given** a ranked list and a forecast change inside the scenario, **When** the change is applied, **Then** the list re-ranks and the previous order remains retrievable for comparison. |
 | AC-006 | REQ-F-006 | **Given** a recommendation shown to an operator, **When** they accept, change, or reject it, **Then** the outcome is recorded and no crew movement is issued by the system itself. |
 | AC-007 | REQ-F-007 | **Given** two damage reports for the same location, **When** the dispatcher opens the board, **Then** both are visible and linked to one job rather than two. |
 | AC-008 | REQ-F-009 | **Given** any recommendation or human decision, **When** it occurs, **Then** a row is appended carrying the timestamp and the acting user, and no path exists to edit or remove it. |
-| AC-009 | REQ-R-001 | **Given** a signed-in user who is not an admin, **When** they attempt to load or replace a prepared scenario, **Then** the action is refused and the refusal is recorded. |
+| AC-009 | REQ-R-001 | **Given** a signed-in user who is not an admin, **When** they attempt to load or replace a prepared scenario, **Then** the action is refused and the refusal is recorded **in the security log** — actor, time, filename, reason (CHG-015). Not in the decision record: that holds decisions about recommendations, and a refused upload is an access-control event, not a decision. |
 | AC-010 | REQ-NF-003 | **Given** the platform running with stale data, **When** any screen is opened, **Then** the staleness and the age are stated on the screen rather than inferred by the reader. |
 
 **Examples (Ch. 5 §5.7)**

@@ -13,7 +13,7 @@ maintain it.
 
 | Req ID | Requirement | Design / Spec section | Task ID | Test ID | Code link | Review status |
 |---|---|---|---|---|---|---|
-| REQ-F-001 | Join asset records into one view per asset, with source and age on every value | Tech spec §2, `database-design.md` §1, §3 | TASK-002 | ATEST-001, ATEST-002, UTEST-002…008, ITEST-001, FTEST-001…003 | — | Draft |
+| REQ-F-001 [built: `backend/app/loader/`, `frontend/views/AssetTable.tsx`] | Join asset records into one view per asset, with source and age on every value | Tech spec §2, `database-design.md` §1, §3 | TASK-002 | ATEST-001, ATEST-002, UTEST-002…008, ITEST-001, FTEST-001…003 | — | Draft |
 | REQ-F-002 | Every asset ranked by risk in one list | ADR-005, `ai-boundary-spec.md` §1 | TASK-003 | ATEST-003, UTEST-010, PTEST-001, EVAL-001 | — | Draft |
 | REQ-F-003 | Reasons behind each rank, in plain words | ADR-005, BR-002 | TASK-003 | ATEST-004, UTEST-009, FTEST-004 | — | Draft |
 | REQ-F-004 | Re-rank on a forecast change, without restarting the plan | `database-design.md` §3 (revision key) | TASK-006 | ATEST-005, ITEST-004 | — | Draft |
@@ -22,15 +22,15 @@ maintain it.
 | REQ-F-007 | One shared list of damage and repair jobs | `database-design.md` §1 | TASK-005 | ATEST-007, ITEST-003, PTEST-002 | — | Draft |
 | REQ-F-008 | Dismiss a false alarm in one action | `database-design.md` §3 (dismissal check) | TASK-008 | UTEST-011 | — | Draft |
 | REQ-F-009 | Record every recommendation and every decision | BR-004, ADR-004 | TASK-004 | ATEST-008, ITEST-002, STEST-008 | — | Draft |
-| REQ-F-010 | An admin loads a prepared storm scenario | CHG-001, `data-and-integration-spec.md` §3 | TASK-002, TASK-009 | ATEST-009, ITEST-005, E2E-002, STEST-005…006, FTEST-001, FTEST-008 | — | Draft |
+| REQ-F-010 | An admin loads a prepared storm scenario | CHG-001, CHG-012, `data-and-integration-spec.md` §3 | TASK-002, TASK-009 | ATEST-009, ITEST-005, E2E-002, STEST-005…006, FTEST-001, FTEST-008 | `backend/app/api/scenarios.py`, `backend/app/api/uploads.py`, `backend/app/store/scenarios.py`, `frontend/views/ScenarioUploadPanel.tsx` | **Built** — E2E-002 owed (browser) |
 | REQ-NF-001 | Re-rank 220 assets under 5 s; page under 2 s; reasons under 300 ms | Tech spec §8 | TASK-003, TASK-005 | PTEST-001, PTEST-002 | — | Draft |
-| REQ-NF-002 | Signed-in access, per-role views, every access recorded | ADR-003, SEC-A/SEC-Z | TASK-001 | UTEST-001, STEST-001…004 | — | Draft |
-| REQ-NF-003 | Survive missing or malformed data, showing the last good picture | Reliability spec §3 | TASK-002 | ATEST-010, FTEST-002, FTEST-003 | — | Draft |
+| REQ-NF-002 | Signed-in access, per-role views, every access recorded | ADR-003, SEC-A/SEC-Z, CHG-008, CHG-009 | TASK-001 | UTEST-001, STEST-001…004 | `backend/app/api/auth.py`, `backend/app/api/middleware.py`, `backend/app/store/sessions.py`, `backend/app/store/users.py` | **Built — in review** |
+| REQ-NF-003 | **(a)** state the data's age always; **(b)** name a lost file without degrading a correct screen (CHG-013) | Reliability spec §3, CHG-013 | TASK-002 | ATEST-010, FTEST-002, FTEST-003 | `backend/app/api/views.py`, `frontend/views/StalenessBanner.tsx`, `frontend/views/ScenarioIntegrityNotice.tsx` | **Built** |
 | REQ-NF-004 | Any critical action in two actions or fewer | `frontend-component-spec.md` | TASK-003, TASK-005 | E2E-001 | — | Draft |
 | REQ-NF-005 | Scoring separable from the views that show it | ADR-001 | TASK-003 | — (FF-002) | — | Draft |
 | REQ-NF-006 | Accessibility — WCAG 2.1 AA | `frontend-component-spec.md` (keyboard, colour-never-alone) | TASK-003, TASK-008 | ATEST-011 | — | Draft |
 | REQ-NF-007 | Neighbourhood-level display; the CON-003 list is never stored | Security spec §4 | TASK-002, TASK-005 | UTEST-012, STEST-009 | — | Draft |
-| REQ-R-001 | A user reads everything but loads no scenario | SEC-Z-001, SEC-Z-002 | TASK-001, TASK-002 | ATEST-009, STEST-005 | — | Draft |
+| REQ-R-001 | A user reads everything but loads no scenario | SEC-Z-001, SEC-Z-002 | TASK-001, TASK-002 | ATEST-009, STEST-005 | `backend/app/store/migrations/001_users_and_sessions.up.sql` (the role check only) | **Partly built** — the two roles exist and the database refuses a third. The *allow-list per action* half arrives with the first endpoint that has one (TASK-002). |
 | REQ-R-002 | No role may alter a decision record | ADR-004, SEC-Z-004 | TASK-004 | STEST-008 | — | Draft |
 | REQ-R-003 | No role may command a control system | BR-005, SEC-Z-005 | — (structural) | STEST-010 | — | Draft |
 | BR-001 | The system never acts; a person decides | ADR-005, `ai-boundary-spec.md` §6 | TASK-004 | ATEST-006, ITEST-002 | — | Draft |
@@ -101,7 +101,7 @@ A **gap is any missing link**. Blank cells are the point of this document.
 | ~~REQ-NF-007 is partly unanswerable.~~ | **Closed by CHG-006.** CON-003 now enumerates exactly what must never be stored. | Done. |
 | REQ-R-003 and BR-005 have **no task**. | Correct, and worth stating: they are satisfied by the absence of code, not by any code. | Nothing to build. STEST-010 asserts the absence, which is the only way an absence can be proven. |
 | REQ-NF-005 has **no test**. | Correct: an import boundary is guarded by FF-002, not by a test. | Nothing to add. Wiring FF-002 is TASK-010. |
-| Every row has an empty **Code link**. | Nothing is implemented. This is the workspace's true state, not a finding. | Build TASK-001. |
+| ~~Every row has an empty **Code link**.~~ | **Two rows now carry one.** TASK-001 is built: REQ-NF-002 in full, REQ-R-001 in the half a schema can hold. Every other row is still empty, which remains the workspace's true state rather than a finding. | Build TASK-002. |
 
 **Two requirements cannot be closed by building anything**, and that is the most useful thing
 this matrix still says. REQ-R-003 and BR-005 are proven by structural *absence* — no outbound

@@ -18,11 +18,28 @@ Identify what the system must remember, before you design tables.
 | Repair job | The work that answers one or more damage reports. | id, scenario_id, status, priority_rank, assigned_to, created_at, updated_at | Belongs to one scenario. Has one or more damage reports. | Two reports for the same location resolve to one job, never two (AC-007). |
 | Decision record | Every recommendation the system made and every accept, change or reject a person made. | id, scenario_id, occurred_at, actor_user_id, kind, subject_type, subject_id, payload | Belongs to one scenario. References any other entity by type and id. | Append-only. No update and no delete path exists, for any role (BR-004). |
 | User | A person using the platform, in one of exactly two roles. | id, name, email, password_hash, role, created_at | Acts on many decision records. | Email is unique; role is `admin` or `user` and nothing else. |
-| Scenario | One prepared storm, loaded by an admin, that everything else is scoped to. | id, name, source_note, loaded_by, loaded_at, forecast_revision | Has many assets, risk scores, damage reports, repair jobs and decision records. | Everything read together belongs to one scenario; two scenarios never blend into one ranking. |
+| Session | One signed-in period for one user, created at sign-in and ended server-side at sign-out or expiry. | id, token_hash, user_id, created_at, last_seen_at, ended_at | Belongs to one user. Scoped to no scenario — it is what permits reading any of them. | The session value itself is never stored, only its hash (Q-007). A session the server has ended or expired never authenticates again, whatever the browser still holds (SEC-A-002). |
+| Scenario | One prepared storm, loaded by an admin, that everything else is scoped to. | id, name, source_note, loaded_by, loaded_at, forecast_revision, forecast_issued_at | Has many assets, risk scores, damage reports, repair jobs and decision records. | Everything read together belongs to one scenario; two scenarios never blend into one ranking. |
+| Scenario upload | One attempt to load a prepared storm, from accepted files through to a scenario or a named failure. | id, status, uploaded_by, uploaded_at, storage_path, scenario_id, failed_file, failed_reason | Belongs to one user. Points at the scenario it produced, if it produced one. | A ready upload names its scenario; a failed one names the file that failed. Neither is ever both, and a scenario is referenced only once the parse has wholly succeeded. |
 
 **User** and **Scenario** were derived, not named in Round 3. A permission model with two roles
 requires a user record, and CON-005 with REQ-F-010 requires something that identifies which
 prepared storm is loaded. Both are stated here so they can be corrected rather than discovered.
+
+**Scenario upload was added by CHG-012, during TASK-002, for the same reason as Session.**
+`technical-spec.md` §9.5 already specified the job in full — a stored upload identifier, the
+states *uploading → parsing → ready* or *failed*, and a failure that names the file — and §9.1
+requires that a parse failing partway creates **no scenario at all**. Those two together leave
+the job's own state with nowhere to live: it cannot hang off a scenario row that deliberately
+does not exist yet. The admin watching the panel, and the same admin after a page reload, are
+both reading this table.
+
+**Session was added by CHG-008, during TASK-001 rather than during the interview.** ADR-003
+required a session created, checked, and ended server-side; ADR-006 twice described "a session
+lookup per request against a local store"; ADR-002 held that nothing which matters lives in
+process memory. Three accepted decisions therefore required a durable table that this section
+did not define — the gap was found by the first task that had to build against it, which is
+where §8 of `spec-change-log.md` says such gaps are expected to surface.
 
 | Question | Your answer |
 |---|---|
@@ -75,6 +92,20 @@ users
                                                --   arrive by accident, only by a migration
 - created_at: datetime, required
 
+sessions
+- id: string, primary key
+- token_hash: string, required, unique         -- CHG-008. The session VALUE is never stored, only a
+                                               --   hash of it — the same rule as password_hash, and
+                                               --   what keeps Q-007's "no session values in the
+                                               --   database" true of a durable session table
+- user_id: string, required, foreign key -> users.id
+- created_at: datetime, required               -- ADR-006: the 12-hour absolute cap is measured here
+- last_seen_at: datetime, required             -- ADR-006: the 240-minute idle limit is measured here
+- ended_at: datetime, optional                 -- ADR-003: sign-out ends the session in the STORE. A
+                                               --   logout the server does not know about is a
+                                               --   session still open
+  index: user_id
+
 scenarios
 - id: string, primary key
 - name: string, required
@@ -84,6 +115,35 @@ scenarios
 - forecast_revision: integer, required, default 0
                                                -- REQ-F-004: a forecast change increments this rather
                                                --   than overwriting what was ranked before
+- forecast_issued_at: datetime, optional       -- CHG-013. From the manifest. REQ-NF-003(a)
+                                               --   measures the data's age from here, so without
+                                               --   it every screen's staleness claim has no
+                                               --   origin. Nullable per §8: added, then backfilled,
+                                               --   never required in one step. A scenario without
+                                               --   one reports an unknown age, never a fresh one
+
+scenario_uploads
+- id: string, primary key                      -- CHG-012. §9.5's "stored upload identifier"
+- status: string, required,
+          check in ('uploading','parsing','ready','failed')
+- uploaded_by: string, required, foreign key -> users.id
+- uploaded_at: datetime, required
+- name: string, required                       -- the scenario name the admin supplied
+- source_note: string, required
+- storage_path: string, required               -- a GENERATED identifier. Never any part of a
+                                               --   supplied filename (security-spec §7)
+- scenario_id: string, optional, foreign key -> scenarios.id
+- failed_file: string, optional                -- REQ-NF-003: the failure names the file
+- failed_reason: string, optional
+- finished_at: datetime, optional
+  check (status <> 'ready' or scenario_id is not null)
+                                               -- a ready upload without a scenario is a
+                                               --   success nobody can open
+  check (status <> 'failed' or failed_file is not null)
+                                               -- REQ-NF-003 again: a failure that does not
+                                               --   name the file is an error page with extra
+                                               --   steps
+  index: uploaded_by, status
 
 assets
 - id: string, primary key
@@ -188,6 +248,15 @@ the data; a trigger does not, because anyone who can run a migration can drop it
 checklist therefore treats removing either trigger as a change requiring a superseding ADR, and
 FF-004 fails the build if either is missing.
 
+**Where session expiry is enforced, since no constraint can express it** (CHG-008). Both of
+ADR-006's limits are relative to the current time, so neither is a check constraint: a row valid
+when written expires without being touched. They are enforced in **the single session check in
+the API layer** — the one every route passes through — which refuses a session whose `ended_at`
+is set, whose `last_seen_at` is older than `SESSION_IDLE_TIMEOUT_MINUTES`, or whose `created_at`
+is older than `SESSION_ABSOLUTE_MAX_HOURS`, and refreshes `last_seen_at` otherwise. **STEST-002
+is the test that fails if this stops working**, and it presents both an expired session and a
+signed-out one because the two reach the check by different fields.
+
 > ### The core subdomain's rule belongs HERE, not only in prose
 >
 > [`subdomain-map.md`](../01-intent/subdomain-map.md) names exactly one **core** subdomain — the
@@ -237,6 +306,7 @@ Every query must be scoped correctly. State the rule explicitly so the agent can
 | Asset, risk score, damage report, repair job | Every read and write is scoped by `scenario_id`. Two scenarios must never blend into one ranking. |
 | Scenario | Written only by an admin (REQ-R-001). Readable by every signed-in user. |
 | Decision record | Readable by an admin. Insert-only for every role including admin (BR-004). |
+| Session | Scoped by `user_id`, never by scenario — a session grants a person access to the platform, not to one storm. Never readable through any endpoint, by any role: it is looked up by the API layer's session check and is never part of a response (CHG-008). |
 
 ---
 
@@ -245,6 +315,7 @@ Every query must be scoped correctly. State the rule explicitly so the agent can
 | Field | Sensitivity | Storage rule | Logging rule |
 |---|---|---|---|
 | `users.password_hash` | Credential | Hashed only — never plain text. | Never logged. |
+| `sessions.token_hash` | Credential | Hashed only. The raw session value exists in the cookie and in the sign-in response, and **nowhere else** — not in this table, not in an error, not in a log (Q-007, CHG-008). | Never logged, in full or in part. Log `user_id`, never the session. |
 | `users.email` | Personal data | Stored; unique index. | Logged only as `user_id`, never the address. |
 | `assets.location`, `assets.connections` | Critical infrastructure | Stored. Reachable only by a signed-in user. | Never logged in full; logged as `asset_id` only. |
 | `damage_reports.location` | Operational, and adjacent to customers | Stored at the resolution the decision needs and no finer. | Aggregated to neighbourhood level in any log or exported summary (REQ-NF-007). |
@@ -262,6 +333,8 @@ Every query must be scoped correctly. State the rule explicitly so the agent can
 | Asset | Kept with its scenario. | Hard delete with the scenario. |
 | Scenario | **90 days after storm close** (Q-015). | Hard delete, cascading to assets, risk scores, damage reports and repair jobs — never to decision records. |
 | User | Retained while the account exists; application logs referencing it are kept 30 days (Q-015). | Soft delete. Decision records keep `actor_user_id`, because BR-004 forbids removing the row that names them. |
+| Scenario upload | Kept with the scenario it produced; a failed upload is kept 30 days, with the application logs it belongs beside (Q-015). The stored files themselves go with the scenario at 90 days (CHG-012). | Hard delete. A failed upload's stored files are removed as soon as the failure is recorded — nothing partial is left on disk, which is the same rule §9.1 applies to the database. |
+| Session | Deleted once it can no longer authenticate — 12 hours after `created_at` at the latest (ADR-006). Kept no longer: an ended session has no evidential value, and the decision record already holds who did what (CHG-008). | Hard delete. Cascades with the user on soft delete only in the sense that every session of a disabled account is ended immediately. |
 
 ---
 

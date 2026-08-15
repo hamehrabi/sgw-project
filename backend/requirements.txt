@@ -1,0 +1,15 @@
+# SGW Resilience Platform — backend (ADR-008: Python / FastAPI)
+#
+# Nothing here reaches outside the platform. The one external service in the system
+# (ADR-009's phrasing model) belongs to the scoring work and is absent from TASK-001.
+
+fastapi
+uvicorn[standard]
+bcrypt
+python-multipart
+
+# --- development and test ---
+pytest
+pytest-asyncio
+httpx
+ruff

@@ -1,0 +1,16 @@
+{
+  "scenario_id": "STORM-HELENE-REPLAY",
+  "storm_name": "Helene replay",
+  "forecast_issued_at": "2026-08-14T18:00:00Z",
+  "files": ["assets.csv", "maintenance.csv", "weather.csv", "outages.csv"],
+  "row_counts": {
+    "assets.csv": 8,
+    "maintenance.csv": 5,
+    "weather.csv": 11,
+    "outages.csv": 5
+  },
+  "service_areas": [
+    { "service_area_id": "SA-NORTH", "customer_count": 12000 },
+    { "service_area_id": "SA-COAST", "customer_count": 4500 }
+  ]
+}
