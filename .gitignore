@@ -1,9 +1,8 @@
 # --- local only, never pushed ---
 # git does NOT support trailing comments on a pattern line - keep them above.
-# The specification workspace lives on this machine only.
-spec/
-# Client briefing PDFs.
-proj-knowledge/
+# The specification workspace IS committed. It has its own spec/.gitignore, which keeps the
+# database, uploaded scenarios and real .env values out - see ADR-002.
+# Client briefing PDFs are committed - they are the source the spec was derived from.
 
 # --- secrets ---
 .env

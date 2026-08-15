@@ -1,0 +1,109 @@
+# Task Index
+
+> Source: Ch. 4 §4.9 (Step 5) — "Create `task-index.md` so every future task has a record."
+> Keeping tasks as separate files creates a useful history of what the project attempted.
+> It makes review easier and prevents the same unclear request from being repeated.
+
+---
+
+| Task ID | Title | Requirement | Priority | Depends on | Status | Owner (human / agent) | Test IDs |
+|---|---|---|---|---|---|---|---|
+| TASK-001 | Sign in with two roles, and the application shell | REQ-NF-002, SEC-A-001…003, SEC-Z-001 | P0 | — | Not started | agent | STEST-001…004, UTEST-001 |
+| TASK-002 | Upload and parse a prepared storm into the joined asset view | REQ-F-001, REQ-F-010, SEC-Z-002 | P0 | TASK-001 | Not started | agent | ATEST-001, ATEST-002, ATEST-009, ATEST-010, UTEST-002…008, ITEST-001, FTEST-001…003, STEST-005…007, E2E-002 |
+| TASK-003 | Ranked risk list with plain-words reasons, scored by a deterministic rule (ADR-005) | REQ-F-002, REQ-F-003, BR-002 | P0 | TASK-002 | Not started | agent | ATEST-003, ATEST-004, UTEST-009, UTEST-010, FTEST-004, EVAL-001, PTEST-001 |
+| TASK-004 | Accept, change, or reject a recommendation, writing the append-only record | REQ-F-006, REQ-F-009, BR-001, BR-004 | P1 | TASK-003 | Not started | agent | ATEST-006, ATEST-008, ITEST-002, FTEST-005, STEST-008 |
+| TASK-005 | Dispatch board — one shared damage and repair list | REQ-F-007 | P1 | TASK-002 | Not started | agent | ATEST-007, ITEST-003, PTEST-002 |
+| TASK-006 | Re-rank on a forecast change, keeping the previous order | REQ-F-004 | P1 | TASK-003 | Not started | agent | ATEST-005, ITEST-004 |
+| TASK-007 | Record a crew placement against the ranking | REQ-F-005 | P1 | TASK-003 | Not started | agent | E2E-001 |
+| TASK-008 | Dismiss a false alarm in one action | REQ-F-008 | P1 | TASK-005 | Not started | agent | UTEST-011 |
+| TASK-009 | Switch between several loaded storms | REQ-F-010 | P2 | TASK-002 | Not started | agent | ITEST-005 |
+| TASK-010 | Wire the six fitness functions into a build gate | FF-001…FF-006 | P1 | TASK-001 | Not started | human | — (the register is the assertion) |
+
+**Status values:** Not started · In progress · Blocked · In review · Done · Rejected
+
+**Priority (Ch. 14 §14.5):**
+
+| Priority | Meaning | Example |
+|---|---|---|
+| P0 | Must exist before related work can begin. | User model, database table, API contract. |
+| P1 | Required for the feature to be usable. | Login endpoint, form validation, error behavior. |
+| P2 | Useful improvement after core behavior works. | Remember-me option, better loading state. |
+| P3 | Future or polish item. | Animation, theme variation, optional shortcut. |
+
+> When using an AI agent, start with P0 and P1. Do not give it P2 or P3 work until the
+> foundation is implemented, tested, and reviewed.
+
+## Nothing is blocked any more
+
+**TASK-002 was blocked by Q-017 and no longer is** (CHG-006). A prepared scenario is a manifest
+plus four CSVs, under 5 MB at demo scale, with the column list in `data-and-integration-spec.md`
+§1 and the limits in `.env.example`. Eight of the ten tasks sat downstream of that one answer.
+
+**Every task in the table above can now be started.** What remains open — Q-018's unmeasurable
+baseline, Q-026's absent owners, Q-028's unrehearsed restore — blocks *claiming* things, not
+*building* them.
+
+**TASK-003 was blocked by Q-023 and no longer is.** ADR-005 settled it during this round: a
+deterministic weighted rule for version one, behind the boundary that keeps the swap to a
+trained model one module wide. What is still open is Q-025 — *which* factors and weights, and
+who confirms the ranking is sane. That does not block starting the task, because the boundary,
+the contract, and the reasons requirement are all fixed; it blocks calling the ranking
+trustworthy, which is a different gate.
+
+**TASK-001 is not blocked, but its done criteria are incomplete.** SEC-A-002 requires a session
+to expire; Q-021 has not said after how long. The task can be built with the duration as
+configuration — `.env.example` already carries the blank — and the expiry test cannot assert a
+specific number until Q-021 answers.
+
+---
+
+## Dependency map
+
+Draw the build order. If a task cannot be *tested correctly* without an earlier task,
+there is a dependency (Ch. 14 §14.4).
+
+```
+TASK-001 (sign in + shell)
+    ├── TASK-010 (wire the fitness-function gate)
+    └── TASK-002 (upload + parse + joined asset view)
+             ├── TASK-005 (dispatch board)
+             │        └── TASK-008 (dismiss a false alarm)
+             ├── TASK-009 (switch between storms)
+             └── TASK-003 (ranked risk list + reasons)    [ADR-005 + ADR-007]
+                      ├── TASK-004 (accept / change / reject + decision record)
+                      ├── TASK-006 (re-rank on forecast change)
+                      └── TASK-007 (record a crew placement)
+```
+
+**The shape is deliberate.** Every task from TASK-002 onward is a thin vertical slice — data,
+rule, endpoint and screen for one capability — so each one is reviewable by using it. That is
+the only review that catches *built the wrong thing*, which is the exact risk assumptions A2 and
+A3 name.
+
+## Only TASK-001 is written as a file, on purpose
+
+`02-tasks/02-task-files/` holds one task file, not ten. With thin vertical slices and an agent
+working one task at a time, TASK-003's detail depends on what TASK-002 actually produced —
+writing all ten now would be layer-by-layer planning wearing a vertical-slice label, and most of
+it would be stale by the third task.
+
+Each task file is written from the template in `TASK-001.md` when its task is picked up. The row
+above carries what is needed to start: the requirement, the dependency, the tests, and the
+priority.
+
+---
+
+## Task breakdown checklist (Ch. 14)
+
+- [x] Each task has one clear outcome.
+- [x] Each task points back to a requirement, specification, or design decision.
+- [x] Each task has done criteria that can be checked.
+- [x] Dependencies are listed before implementation begins.
+- [x] P0 and P1 tasks are completed before optional improvements.
+- [x] Each task says what is out of scope.
+- [x] No task gives the agent permission to rewrite unrelated code.
+- [x] Tests are planned before or alongside implementation.
+
+---
+
+> Blueprint: blueprints/02-tasks/01-planning/task-index.md

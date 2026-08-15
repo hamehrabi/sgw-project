@@ -4,10 +4,15 @@ An internal dashboard that loads a prepared storm scenario, ranks assets by risk
 plain-words reason beside each rank, and records every recommendation and decision.
 **It recommends; people decide.**
 
-## The specification is not in this repository
+## The specification is in this repository
 
-It lives at `spec/` on the working machine and is deliberately **not committed**. Every task
-is driven from it, and nothing under `spec/01-docs/` is ever an output of a task.
+It lives at `spec/`, and every task is driven from it. **Nothing under `spec/01-docs/` is ever
+an output of a task** - it is an input to all of them, and a change there is a change-log
+decision first (`spec/01-docs/09-change-control/spec-change-log.md`).
+
+`proj-knowledge/` holds the client briefing documents the specification was derived from. They
+are history, not requirements: where the two disagree, `spec/` is the decision and the briefing
+is what was thought before it.
 
 | Before any task, read | Path |
 |---|---|
@@ -21,9 +26,10 @@ If `spec/` is absent, **stop and ask** — do not infer the specification from t
 ## Layout
 
 ```
-backend/    FastAPI / Python - api, store, scoring, loader   (ADR-008)
-frontend/   Next.js / TypeScript - views                     (ADR-008)
-spec/       local only, never committed
+backend/         FastAPI / Python - api, store, scoring, loader   (ADR-008)
+frontend/        Next.js / TypeScript - views                     (ADR-008)
+spec/            the specification - read-only to every task
+proj-knowledge/  source briefings the spec was derived from
 ```
 
 ## Never
