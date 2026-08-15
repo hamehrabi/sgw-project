@@ -1,0 +1,36 @@
+# --- local only, never pushed ---
+# git does NOT support trailing comments on a pattern line - keep them above.
+# The specification workspace lives on this machine only.
+spec/
+# Client briefing PDFs.
+proj-knowledge/
+
+# --- secrets ---
+.env
+.env.*
+!.env.example
+
+# --- data: ADR-002 forbids committing the database ---
+*.db
+*.db-wal
+*.db-shm
+*.sqlite
+*.sqlite3
+
+# --- python ---
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+
+# --- node ---
+node_modules/
+.next/
+out/
+npm-debug.log*
+
+# --- os / editor ---
+.DS_Store
+Thumbs.db
