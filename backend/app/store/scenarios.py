@@ -12,6 +12,37 @@ from datetime import UTC, datetime
 
 from app.store import forecasts
 
+# The two bounds `scenarios_identity_shape` holds, in the one place the service layer reads them.
+# **Two hard-coded copies of one number are tied together by nothing**, and when they drift the
+# endpoint's specified `400 validation_error` becomes a `500 internal_error` for a value between
+# them — which is what happened to `dispatch.NEIGHBOURHOOD_MAX` with the whole suite green through
+# it (CHG-023). `test_TASK-009-AC5` reads both numbers back out of the trigger and fails when they
+# disagree with these.
+NAME_MAX = 200
+SOURCE_NOTE_MAX = 500
+
+# Enumerated rather than left to `str.strip()`'s default so the service and the store agree about
+# what "blank" means. SQLite's one-argument `trim()` strips spaces only, so the trigger names the
+# same six characters (CHG-023).
+_WHITESPACE = " \t\n\r\v\f"
+
+
+def storm_text(value, limit: int) -> str | None:
+    """The value as it may be stored, or `None` if the store would refuse it.
+
+    The legible `400` in front of the trigger, and **not** the rule: a direct insert never passes
+    through here, and `scenarios_identity_shape` refuses the same shapes independently. Surrounding
+    whitespace is trimmed rather than refused — a padded label is not a wrong label, which is the
+    difference between this column and `repair_jobs.location_key`, where two spellings mean two
+    crews (CHG-023).
+    """
+    if not isinstance(value, str):
+        return None
+    cleaned = value.strip(_WHITESPACE)
+    if not cleaned or len(cleaned) > limit:
+        return None
+    return cleaned
+
 
 def _now() -> str:
     return datetime.now(UTC).isoformat()
@@ -45,23 +76,67 @@ def find_upload(connection, upload_id) -> sqlite3.Row | None:
 
 
 def find_by_content_key(connection, content_key) -> sqlite3.Row | None:
-    """An identical re-load replaces in place rather than creating a rival ranking (§5)."""
+    """An identical re-load replaces in place rather than creating a rival ranking (§5).
+
+    **Not the rule** (ADR-002, CHG-031). `unique (content_key)` refuses the second row whether or
+    not this lookup ran; what this buys the endpoint is the `200 OK` with the existing id that
+    `data-and-integration-spec.md` §3 specifies, instead of a `500` from a constraint.
+
+    It reads `content_key` and not `source_note`. Until migration 013 the digest was stored in the
+    column §3 defines as the admin's note, which is why the switcher's third field was hex.
+    """
     return connection.execute(
-        "select * from scenarios where source_note = ?", (content_key,)
+        "select * from scenarios where content_key = ?", (content_key,)
     ).fetchone()
 
 
-def save_loaded_scenario(connection, result, *, upload_id, name, source_note, loaded_by) -> str:
+def all_loaded(connection) -> list[sqlite3.Row]:
+    """Every storm that is loaded, newest first — `ScenarioSwitcher`'s whole input (CHG-030).
+
+    **Ordered by `seq`, never by a timestamp** (CHG-018, CHG-032). `datetime.now(UTC).isoformat()`
+    resolves to about 15.6 ms here and `id` is a random UUID, so two storms loaded in one tick
+    come back in coin-flip order under `order by loaded_at desc, id` — and this is the one read in
+    the product whose whole purpose is a list somebody scans.
+
+    Two columns are computed rather than joined out: how many assets the storm holds, and whether
+    its **current** revision has an order behind it. The second is CHG-027's argument one screen
+    over — a switcher that offered a storm as though it were rankable, when nothing has ranked it,
+    would put the reader one click from an empty screen that reads as safety.
+    """
+    return connection.execute(
+        "select s.*,"
+        " (select count(*) from assets a where a.scenario_id = s.id) as asset_count,"
+        " exists (select 1 from risk_scores r where r.scenario_id = s.id"
+        "         and r.forecast_revision = s.forecast_revision) as ranked"
+        " from scenarios s order by s.seq desc"
+    ).fetchall()
+
+
+def save_loaded_scenario(
+    connection, result, *, upload_id, name, source_note, content_key, loaded_by
+) -> str:
     """Write the scenario and every asset, or write nothing at all."""
     scenario_id = f"SC-{uuid.uuid4().hex[:12]}"
     try:
         connection.execute("begin")
         connection.execute(
             "insert into scenarios"
-            " (id, name, source_note, loaded_by, loaded_at, forecast_revision,"
-            " forecast_issued_at)"
-            " values (?, ?, ?, ?, ?, 0, ?)",
-            (scenario_id, name, source_note, loaded_by, _now(), result.forecast_issued_at),
+            " (id, name, source_note, content_key, loaded_by, loaded_at, forecast_revision,"
+            " forecast_issued_at, seq)"
+            # `seq` is taken inside the statement, from the table itself, by the single writer
+            # (ADR-002). A counter held beside the connection is indistinguishable inside one
+            # process and restarts at 1 after a restart, which `unique (seq)` then refuses.
+            " values (?, ?, ?, ?, ?, ?, 0, ?,"
+            " (select coalesce(max(seq), 0) + 1 from scenarios))",
+            (
+                scenario_id,
+                name,
+                source_note,
+                content_key,
+                loaded_by,
+                _now(),
+                result.forecast_issued_at,
+            ),
         )
         connection.executemany(
             "insert into assets (id, scenario_id, external_ids, type, location, condition,"

@@ -16,7 +16,7 @@
 | TASK-006 | Re-rank on a forecast change, keeping the previous order | REQ-F-004, AC-005 | P1 | TASK-003 | **In review** | agent | ATEST-005, ITEST-004 |
 | TASK-007 | Record a crew placement against the ranking | REQ-F-005, BR-001 | P1 | TASK-003 | **In review** | agent | E2E-001, FTEST-005 (the placement half) |
 | TASK-008 | Dismiss a false alarm in one action | REQ-F-008 | P1 | TASK-005 | Not started | agent | UTEST-011 |
-| TASK-009 | Switch between several loaded storms | REQ-F-010 | P2 | TASK-002 | Not started | agent | ITEST-005 |
+| TASK-009 | Switch between several loaded storms | REQ-F-010 | P2 | TASK-002 | **In review** | agent | ITEST-005 |
 | TASK-010 | Wire the **remaining** fitness function into the build gate | FF-003 | P1 | — | Not started | human | — (the register is the assertion) |
 
 **Status values:** Not started · In progress · Blocked · In review · Done · Rejected
@@ -166,6 +166,34 @@ decided there, along with the two alternatives that were declined in writing: a 
 (it would split one decision across an append-only table and an ordinary one) and a rebuild of
 `decision_records` to carry a `check` (it cannot be done without dropping both append-only
 triggers, which ADR-004 forbids).
+
+**TASK-009 is built and In review, and it was started without assuming any earlier task is
+accepted** — it adds no table, and the only existing code it changes is what the switcher needs:
+one column's meaning, one list read, and one order. `TASK-009.md` is written, **ITEST-005** exists
+as 22 executable cases, migration **013** is shipped with an up and a down (010 and 011 went to
+TASK-006 and 012 to TASK-007, so the number the brief reserved had drifted for the third time),
+and the whole gate is green — suite **450 + 1 skipped over three runs**, `ruff`, six fitness
+functions, ten evals, `tsc`, `lint`, `build` and **32** Playwright specs.
+
+**Every case written for it was mutation-checked — 40 mutations — and five of them found a test
+that could not fail.** The store's `asset_id` tiebreak on the ranking page order was invisible to
+the whole suite, because each of the three shipped fixtures has exactly *one* unscored asset and
+`rank is null, rank` is already total for them; the case that sees it now writes several unscored
+rows directly, in an order that is not their asset-id order. `asset_count` was asserted as
+`> 0`, so counting the whole database passed. `ranked` was asserted only where it was true.
+`ScenarioView`'s clearing-on-switch was covered by an assertion the loading state satisfied on its
+own, so the panels that actually fail to clear — the forecast control and the staleness banner,
+both drawn from `scenario` — went unchecked. And a mutation of the down migration that added
+`drop trigger` four lines above the file's own re-assertion **did not mutate**, which is the fifth
+time this repository has recorded that trap.
+
+**Three change entries are open against this task and none is accepted.** **CHG-030** (nothing
+listed the loaded storms, so the component whose whole purpose is choosing among them had nothing
+to choose from — CHG-009's shape, for the third time), **CHG-031** (`scenarios.source_note` was
+holding a SHA-256 digest, because the content key §5's idempotency rule turns on had no column of
+its own — and that rule lived in one service-layer lookup a direct insert walked straight past)
+and **CHG-032** (`scenarios` had no total order, so a list of storms loaded inside one clock tick
+came back in coin-flip order — CHG-018's decision, on the fourth table).
 
 **The ordering defect was never TASK-005's alone**, which is why this row matters to TASK-004 as
 well: `decision_records` has been intermittently mis-ordered since migration 006, and

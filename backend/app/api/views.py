@@ -12,6 +12,8 @@ Two properties are decided here because a screen cannot invent either one:
   stored rows, so a lost file leaves the picture correct.
 """
 
+import base64
+import binascii
 import json
 from datetime import UTC, datetime
 from pathlib import Path
@@ -258,6 +260,77 @@ def board_body(scenario_id: str, jobs, reports) -> dict:
         "dismissed_report_count": (
             sum(item["dismissed_report_count"] for item in items) + unattached_dismissed
         ),
+    }
+
+
+def encode_cursor(scenario_id: str, forecast_revision: int, offset: int) -> str:
+    """The opaque `cursor` `api-specification.md` writes into the `GET /risks` contract.
+
+    **It carries the storm and the revision it was issued for, and that is the point.** A page of
+    one storm's ranking served under another storm's name is REQ-F-010's blend with no visible
+    symptom — the response would look entirely ordinary. Carrying the scope inside the token makes
+    a crossed cursor something the endpoint can refuse rather than something a reader has to
+    notice.
+
+    Opaque, not signed. It grants nothing: every field in it is re-checked against the request,
+    and the worst a forged one can do is ask for a page of a ranking the caller may already read.
+    """
+    raw = json.dumps(
+        {"s": scenario_id, "r": forecast_revision, "o": offset}, separators=(",", ":")
+    )
+    return base64.urlsafe_b64encode(raw.encode()).decode().rstrip("=")
+
+
+def decode_cursor(value: str) -> dict | None:
+    """The cursor's three fields, or `None` if it is not one.
+
+    Never a fall back to page one. A caller walking a list past an unreadable cursor would
+    silently restart it — reading the same page forever, or believing they had seen the whole
+    storm, which is the failure `technical-spec.md` §7.3 forbids for `forecast_revision` in the
+    same words.
+    """
+    try:
+        raw = base64.urlsafe_b64decode(value + "=" * (-len(value) % 4))
+        payload = json.loads(raw.decode())
+    except (ValueError, binascii.Error, UnicodeDecodeError):
+        return None
+    if not isinstance(payload, dict) or set(payload) != {"s", "r", "o"}:
+        return None
+    if not isinstance(payload["s"], str) or not isinstance(payload["r"], int):
+        return None
+    # `bool` is an `int` in Python, and `True` as an offset would silently mean 1.
+    if not isinstance(payload["o"], int) or isinstance(payload["o"], bool) or payload["o"] < 0:
+        return None
+    return payload
+
+
+def loaded_scenario_item(row, config, *, now=None) -> dict:
+    """One storm as `ScenarioSwitcher` reads it (CHG-030).
+
+    `frontend-component-spec.md` asks for *name, source note, loaded date*; the age travels with
+    them because AC-010 requires every screen to state how old its data is **always**, and a
+    switcher that named a six-day-old storm as though it were current would be the first screen
+    to break that rule.
+
+    **No asset, no coordinate, no neighbourhood** (CON-003, REQ-NF-007). A count is the finest
+    thing here, and this is the cheapest place in the product for something finer to be added by
+    accident — a switcher row reading "3 substations at risk" would look helpful.
+    """
+    issued_at = row["forecast_issued_at"]
+    age = data_age_hours(issued_at, now) if issued_at else None
+    return {
+        "scenario_id": row["id"],
+        "name": row["name"],
+        "source_note": row["source_note"],
+        "loaded_at": row["loaded_at"],
+        "forecast_revision": row["forecast_revision"],
+        "forecast_issued_at": issued_at,
+        "data_age_hours": round(age, 2) if age is not None else None,
+        "stale": bool(age is not None and age >= config.scenario_stale_after_hours),
+        "asset_count": row["asset_count"],
+        # Whether the storm's current revision has an order behind it. A storm can be loaded and
+        # unranked, and a switcher that could not tell would offer the reader an empty screen.
+        "ranked": bool(row["ranked"]),
     }
 
 

@@ -233,9 +233,13 @@ def test_two_storms_never_share_a_job(client, application, accounts):
     first_storm = loaded_storm(client, accounts)
     second_storm = f"SC-{'b' * 12}"
     application.state.db.execute(
-        "insert into scenarios (id, name, source_note, loaded_by, loaded_at, forecast_revision)"
-        " values (?, 'Second storm', 'other', ?, '2026-08-16T00:00:00Z', 0)",
-        (second_storm, accounts["admin"]["id"]),
+        # `content_key` and `seq` are required by migration 013: a storm is identified by
+        # what it was loaded from, and has a place in the order storms are listed in
+        # (CHG-031, CHG-032). A direct insert has to satisfy the store like any other.
+        "insert into scenarios (id, name, source_note, content_key, loaded_by, loaded_at,"
+        " forecast_revision, seq)"
+        " values (?, 'Second storm', 'other', ?, ?, '2026-08-16T00:00:00Z', 0, 900)",
+        (second_storm, "b" * 64, accounts["admin"]["id"]),
     )
     application.state.db.commit()
 
@@ -250,9 +254,13 @@ def test_two_storms_never_share_a_job(client, application, accounts):
 
 def a_second_storm(application, accounts, scenario_id="SC-second-storm"):
     application.state.db.execute(
-        "insert into scenarios (id, name, source_note, loaded_by, loaded_at, forecast_revision)"
-        " values (?, 'Second storm', 'other', ?, '2026-08-16T00:00:00Z', 0)",
-        (scenario_id, accounts["admin"]["id"]),
+        # `content_key` and `seq` are required by migration 013: a storm is identified by
+        # what it was loaded from, and has a place in the order storms are listed in
+        # (CHG-031, CHG-032). A direct insert has to satisfy the store like any other.
+        "insert into scenarios (id, name, source_note, content_key, loaded_by, loaded_at,"
+        " forecast_revision, seq)"
+        " values (?, 'Second storm', 'other', ?, ?, '2026-08-16T00:00:00Z', 0, 901)",
+        (scenario_id, "c" * 64, accounts["admin"]["id"]),
     )
     application.state.db.commit()
     return scenario_id

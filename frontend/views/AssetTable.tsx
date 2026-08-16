@@ -65,7 +65,13 @@ export function AssetTable({
   page: AssetPage | null
   state: 'loading' | 'ready' | 'error'
 }) {
-  if (state === 'loading') return <p role="status">Loading the asset view…</p>
+  if (state === 'loading') {
+    return (
+      <p role="status" data-testid="asset-table-loading">
+        Loading the asset view…
+      </p>
+    )
+  }
 
   if (state === 'error') {
     return (

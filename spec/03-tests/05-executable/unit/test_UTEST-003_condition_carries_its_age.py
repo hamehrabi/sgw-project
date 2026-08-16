@@ -59,9 +59,13 @@ def test_an_asset_with_no_condition_loads_with_none_rather_than_a_default():
 def test_the_store_refuses_a_condition_without_its_age(application, accounts):
     connection = application.state.db
     connection.execute(
-        "insert into scenarios (id, name, source_note, loaded_by, loaded_at, forecast_revision)"
-        " values ('SC-1', 'S', 'n', ?, '2026-08-15', 0)",
-        (accounts["admin"]["id"],),
+        # `content_key` and `seq` are required by migration 013: a storm is identified by
+        # what it was loaded from, and has a place in the order storms are listed in
+        # (CHG-031, CHG-032). A direct insert has to satisfy the store like any other.
+        "insert into scenarios (id, name, source_note, content_key, loaded_by, loaded_at,"
+        " forecast_revision, seq)"
+        " values ('SC-1', 'S', 'n', ?, ?, '2026-08-15', 0, 900)",
+        ("e" * 64, accounts["admin"]["id"]),
     )
 
     with pytest.raises(sqlite3.IntegrityError):
@@ -77,9 +81,13 @@ def test_the_store_refuses_a_condition_without_its_age(application, accounts):
 def test_the_store_accepts_a_condition_that_carries_source_and_age(application, accounts):
     connection = application.state.db
     connection.execute(
-        "insert into scenarios (id, name, source_note, loaded_by, loaded_at, forecast_revision)"
-        " values ('SC-1', 'S', 'n', ?, '2026-08-15', 0)",
-        (accounts["admin"]["id"],),
+        # `content_key` and `seq` are required by migration 013: a storm is identified by
+        # what it was loaded from, and has a place in the order storms are listed in
+        # (CHG-031, CHG-032). A direct insert has to satisfy the store like any other.
+        "insert into scenarios (id, name, source_note, content_key, loaded_by, loaded_at,"
+        " forecast_revision, seq)"
+        " values ('SC-1', 'S', 'n', ?, ?, '2026-08-15', 0, 900)",
+        ("e" * 64, accounts["admin"]["id"]),
     )
 
     connection.execute(

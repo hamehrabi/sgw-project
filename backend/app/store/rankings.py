@@ -113,6 +113,13 @@ def read_ranking(connection, scenario_id, forecast_revision, *, limit=100, offse
     rank rests on and the number shown beside it are the same number (BR-003). Reading revision
     0 after revision 1 has been applied has to answer with revision 0's forecast, or AC-005's
     *retrievable for comparison* would return the old order beside the new weather.
+
+    **`asset_id` is the tiebreak, and it is what makes paging safe.** Every UNSCORED asset has
+    `rank is null`, so `order by rank is null, rank` leaves the whole unscored group in an order
+    SQLite does not define — and an undefined order under `limit`/`offset` repeats rows on one
+    page and drops them from another. `unique (scenario_id, asset_id, forecast_revision)` makes
+    the pair total, which is the same argument CHG-018 made about a clock: *a total order needs a
+    key that is total.*
     """
     return connection.execute(
         "select rs.*, a.external_ids, a.name, a.type, a.condition, a.condition_source,"
@@ -124,8 +131,25 @@ def read_ranking(connection, scenario_id, forecast_revision, *, limit=100, offse
         "   on f.scenario_id = rs.scenario_id and f.grid_cell_id = a.grid_cell_id"
         "   and f.forecast_revision = rs.forecast_revision"
         " where rs.scenario_id = ? and rs.forecast_revision = ?"
-        " order by rs.rank is null, rs.rank limit ? offset ?",
+        " order by rs.rank is null, rs.rank, rs.asset_id limit ? offset ?",
         (scenario_id, forecast_revision, limit, offset),
+    ).fetchall()
+
+
+def recorded_ranking(connection, scenario_id, forecast_revision) -> list[sqlite3.Row]:
+    """One whole stored ranking — asset, rank, score — with nothing joined onto it.
+
+    What the `recommendation` row records (FF-005, REQ-F-009): *the delivered ranking*, which is
+    the whole list a reader is paging through and not the page they happened to ask for. Built
+    from `read_ranking`'s output instead, a reader who opened page two would append a
+    recommendation naming five assets out of two hundred and twenty — an audit row that cannot
+    reconstruct what was shown, which is the only thing it exists to do.
+    """
+    return connection.execute(
+        "select asset_id, rank, score, weight_set_version from risk_scores"
+        " where scenario_id = ? and forecast_revision = ?"
+        " order by rank is null, rank, asset_id",
+        (scenario_id, forecast_revision),
     ).fetchall()
 
 

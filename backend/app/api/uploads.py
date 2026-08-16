@@ -79,7 +79,7 @@ def store_files(files: dict[str, bytes], config) -> Path:
     return directory
 
 
-def run_parse(connection, upload_id, directory, files, *, name, source_note, actor_id):
+def run_parse(connection, upload_id, directory, files, *, name, source_note, content_key, actor_id):
     """The parse. Never retried automatically — a malformed file is a fact about the file.
 
     Runs after the response in production (§9.5's background job) and inline here; either way
@@ -108,6 +108,7 @@ def run_parse(connection, upload_id, directory, files, *, name, source_note, act
         upload_id=upload_id,
         name=name,
         source_note=source_note,
+        content_key=content_key,
         loaded_by=actor_id,
     )
 

@@ -104,9 +104,13 @@ def one_rankable_storm(connection, admin_id) -> None:
     finding: an assertion that cannot fail for the reason it claims.
     """
     connection.execute(
-        "insert into scenarios (id, name, source_note, loaded_by, loaded_at, forecast_revision)"
-        " values ('SC-1', 'S', 'n', ?, '2026-08-15', 0)",
-        (admin_id,),
+        # `content_key` and `seq` are required by migration 013: a storm is identified by
+        # what it was loaded from, and has a place in the order storms are listed in
+        # (CHG-031, CHG-032). A direct insert has to satisfy the store like any other.
+        "insert into scenarios (id, name, source_note, content_key, loaded_by, loaded_at,"
+        " forecast_revision, seq)"
+        " values ('SC-1', 'S', 'n', ?, ?, '2026-08-15', 0, 900)",
+        ("f" * 64, admin_id),
     )
     connection.execute(
         "insert into scenario_forecast_revisions"

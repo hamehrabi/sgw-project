@@ -21,6 +21,8 @@ introduced. Nothing in it is about sessions; that half is
 `test_ADR-002_session_survives_restart.py`.
 """
 
+import hashlib
+
 from conftest import USER_PASSWORD, build_application, sign_in
 from fastapi.testclient import TestClient
 
@@ -53,9 +55,15 @@ def signed_in_client(application):
 
 def a_storm(application, scenario_id="SC-restart"):
     application.state.db.execute(
-        "insert into scenarios (id, name, source_note, loaded_by, loaded_at, forecast_revision)"
-        " values (?, 'Restart storm', 'restart', ?, '2026-08-16T00:00:00Z', 0)",
-        (scenario_id, an_account(application)),
+        # `content_key` and `seq` are required by migration 013: a storm is identified by what
+        # it was loaded from, and has a place in the order storms are listed in (CHG-031,
+        # CHG-032). A direct insert has to satisfy the store like any other. The key is derived
+        # from the id so that a second application over the same file finds the same storm
+        # rather than a rival copy — which is this file's whole subject, one table over.
+        "insert into scenarios (id, name, source_note, content_key, loaded_by, loaded_at,"
+        " forecast_revision, seq)"
+        " values (?, 'Restart storm', 'restart', ?, ?, '2026-08-16T00:00:00Z', 0, 900)",
+        (scenario_id, hashlib.sha256(scenario_id.encode()).hexdigest(), an_account(application)),
     )
     application.state.db.commit()
     return scenario_id

@@ -13,6 +13,10 @@ from conftest import sign_in
 # refusal must come from the API layer's one session check, before routing, so that a route
 # added later is refused by default rather than by remembering to guard it.
 DATA_ROUTES = [
+    # Which storms are loaded is data: it names them, says where they came from and when they
+    # arrived. Added by TASK-009 (CHG-030), and named here rather than left to the generic
+    # unknown-path case, because the criterion names the endpoint.
+    ("GET", "/api/v1/scenarios"),
     ("GET", "/api/v1/scenarios/SCEN-1"),
     ("GET", "/api/v1/scenarios/SCEN-1/assets"),
     ("GET", "/api/v1/scenarios/SCEN-1/risks"),

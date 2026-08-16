@@ -42,11 +42,83 @@ body {
   color: var(--muted);
 }
 
-.scenario-selector {
+/* ScenarioSwitcher. The list is a disclosure rather than a <select>, because each entry has to
+   carry a name, a source note and a loaded date — three lines an <option> cannot hold — and
+   <details> is keyboard-operable without any script of ours. */
+.switcher {
+  position: relative;
   color: var(--muted);
   border: 1px dashed var(--line);
   border-radius: 4px;
   padding: 0.25rem 0.5rem;
+}
+
+.switcher--error {
+  border-style: solid;
+  border-color: var(--warn, #b45309);
+}
+
+.switcher > summary {
+  cursor: pointer;
+  list-style: none;
+}
+
+.switcher__label {
+  font-weight: 600;
+  color: var(--fg);
+}
+
+.switcher__current {
+  color: var(--fg);
+}
+
+.switcher__list {
+  position: absolute;
+  z-index: 10;
+  left: 0;
+  margin: 0.35rem 0 0;
+  padding: 0.25rem;
+  list-style: none;
+  min-width: 22rem;
+  max-height: 60vh;
+  overflow-y: auto;
+  background: var(--bg, #fff);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+}
+
+.switcher__option {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 0.4rem 0.5rem;
+  background: none;
+  border: 0;
+  border-radius: 3px;
+  cursor: pointer;
+}
+
+.switcher__option:hover,
+.switcher__option:focus-visible {
+  background: var(--line);
+}
+
+/* Never colour alone: the chosen storm is marked in text as well, by aria-current. */
+.switcher__option--on {
+  outline: 2px solid var(--fg);
+}
+
+.switcher__name {
+  display: block;
+  font-weight: 600;
+  color: var(--fg);
+}
+
+.switcher__note,
+.switcher__meta {
+  display: block;
+  font-size: 0.85em;
+  color: var(--muted);
 }
 
 .shell__content {

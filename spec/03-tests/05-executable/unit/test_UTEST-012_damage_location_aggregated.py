@@ -42,9 +42,13 @@ OVER_THE_LIMIT = "N" * (dispatch.NEIGHBOURHOOD_MAX + 1)
 def a_storm(application, accounts):
     """A scenario row and nothing else — this rule needs no assets to be broken."""
     application.state.db.execute(
-        "insert into scenarios (id, name, source_note, loaded_by, loaded_at, forecast_revision)"
-        " values ('SC-privacy', 'Privacy storm', 'unit', ?, '2026-08-16T00:00:00Z', 0)",
-        (accounts["admin"]["id"],),
+        # `content_key` and `seq` are required by migration 013: a storm is identified by
+        # what it was loaded from, and has a place in the order storms are listed in
+        # (CHG-031, CHG-032). A direct insert has to satisfy the store like any other.
+        "insert into scenarios (id, name, source_note, content_key, loaded_by, loaded_at,"
+        " forecast_revision, seq)"
+        " values ('SC-privacy', 'Privacy storm', 'unit', ?, ?, '2026-08-16T00:00:00Z', 0, 900)",
+        ("d" * 64, accounts["admin"]["id"]),
     )
     application.state.db.commit()
     return "SC-privacy"

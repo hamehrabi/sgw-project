@@ -28,6 +28,18 @@ type State =
 
 const EXPECTED = 'manifest.json plus assets.csv, maintenance.csv, weather.csv and outages.csv'
 
+/**
+ * What goes in `source_note` when the admin leaves the field blank.
+ *
+ * `data-and-integration-spec.md` §3 makes the note part of the request body and the server
+ * requires it, so the panel has always sent this string — a stub, because until TASK-009
+ * nothing stored the note or showed it. It is kept as the fallback rather than made mandatory:
+ * making the field required would refuse a load during a storm over a sentence, and the note is
+ * how a reader tells two prepared datasets apart, not how the system does (that is the content
+ * digest, CHG-031).
+ */
+const UNSTATED_SOURCE = 'uploaded via the panel'
+
 export function ScenarioUploadPanel({
   role,
   onLoaded,
@@ -37,6 +49,7 @@ export function ScenarioUploadPanel({
 }) {
   const [state, setState] = useState<State>({ stage: 'idle' })
   const [name, setName] = useState('')
+  const [sourceNote, setSourceNote] = useState('')
 
   if (role !== 'admin') return null
 
@@ -50,7 +63,7 @@ export function ScenarioUploadPanel({
       // The request returns once parsing has finished; the intermediate stage is shown
       // because the parse is the slow half and the one that can fail.
       setState({ stage: 'parsing' })
-      const created = await scenarios.load(name, 'uploaded via the panel', files)
+      const created = await scenarios.load(name, sourceNote.trim() || UNSTATED_SOURCE, files)
       setState({ stage: 'success', scenarioId: created.scenario_id })
       onLoaded(created.scenario_id)
     } catch (error) {
@@ -82,6 +95,17 @@ export function ScenarioUploadPanel({
         value={name}
         onChange={(event) => setName(event.target.value)}
         placeholder="Helene replay"
+      />
+
+      {/* `database-design.md` §3: *which prepared dataset this is, and where it came from.* It
+          is the field `ScenarioSwitcher` shows beside each storm's name, and it is how a person
+          tells two loaded storms apart when both are called something plausible. */}
+      <label htmlFor="storm-source-note">Where this came from</label>
+      <input
+        id="storm-source-note"
+        value={sourceNote}
+        onChange={(event) => setSourceNote(event.target.value)}
+        placeholder="NOAA 2024 replay pack"
       />
 
       <label htmlFor="storm-files">Files — {EXPECTED}</label>

@@ -114,6 +114,41 @@ export interface Scenario {
   integrity: Integrity
 }
 
+/**
+ * One storm in the list of loaded storms — `ScenarioSwitcher`'s input (CHG-030).
+ *
+ * `frontend-component-spec.md` asks for *name, source note, loaded date*. The age travels with
+ * them because AC-010 requires every screen to state how old its data is **always**, and a
+ * switcher naming a six-day-old storm as though it were current would be the first screen to
+ * break that rule.
+ *
+ * There is no asset here, no coordinate and no neighbourhood, and there is not going to be one:
+ * a count is the finest thing this response carries (CON-003, REQ-NF-007).
+ */
+export interface LoadedScenario {
+  scenario_id: string
+  name: string
+  /** Which prepared dataset this is, and where it came from — as the admin typed it. */
+  source_note: string
+  loaded_at: string
+  forecast_revision: number
+  forecast_issued_at: string | null
+  data_age_hours: number | null
+  stale: boolean
+  asset_count: number
+  /**
+   * Whether this storm's current revision has an order behind it. A storm can be loaded and
+   * unranked; a switcher that could not tell would offer the reader an empty screen, which is
+   * CHG-027's argument one component over.
+   */
+  ranked: boolean
+}
+
+export interface LoadedScenarios {
+  items: LoadedScenario[]
+  total: number
+}
+
 /** What applying a forecast change produced. A new revision — never a rewritten one. */
 export interface ForecastRevisionApplied {
   scenario_id: string
@@ -229,6 +264,14 @@ export interface Ranking {
   weights_calibrated: boolean
   items: RiskItem[]
   total: number
+  /**
+   * The next page of **this storm's** ranking at **this revision**, or null on the last page.
+   *
+   * Opaque, and it carries its own scope: a cursor handed to another storm is refused rather
+   * than applied, because a page of one storm's ranking served under another storm's name is
+   * REQ-F-010's blend with no visible symptom.
+   */
+  next_cursor: string | null
 }
 
 /**
@@ -296,6 +339,14 @@ export const dispatch = {
 }
 
 export const scenarios = {
+  /**
+   * Every storm that is loaded, newest first (REQ-F-010, US-002).
+   *
+   * Readable by both roles: loading a storm is privileged, choosing which loaded storm to look
+   * at is the product (`technical-spec.md` §7.2).
+   */
+  list: () => request<LoadedScenarios>('/api/v1/scenarios'),
+
   /**
    * Omitting `forecastRevision` asks for the storm's current one. Passing an earlier value
    * returns that earlier ranking **unchanged** (AC-005); passing one the storm does not carry

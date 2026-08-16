@@ -236,9 +236,22 @@ def test_the_database_refuses_an_update_to_a_stored_ranking(client, storm, appli
     assert stored_scores(connection, storm, 0) == before
     # The haystack: this connection can write, and it is `risk_scores` in particular that it
     # cannot rewrite. Without this the refusal above could be a read-only database.
-    connection.execute("update scenarios set name = ? where id = ?", ("Renamed", storm))
+    #
+    # It writes to `assets` rather than to `scenarios.name`, which is what it used to do:
+    # migration 013 fixes a loaded storm's identity at load (CHG-031), so a rename is now
+    # refused too — and a haystack that has itself become a needle proves nothing about the
+    # needle beside it.
+    an_asset = connection.execute(
+        "select id from assets where scenario_id = ? limit 1", (storm,)
+    ).fetchone()
+    assert an_asset is not None, "no asset to attempt a permitted write on"
+    connection.execute(
+        "update assets set name = ? where id = ?", ("Renamed", an_asset["id"])
+    )
     connection.commit()
-    assert client.get(f"/api/v1/scenarios/{storm}").json()["name"] == "Renamed"
+    assert connection.execute(
+        "select name from assets where id = ?", (an_asset["id"],)
+    ).fetchone()["name"] == "Renamed"
 
 
 def test_the_database_refuses_a_second_ranking_for_one_revision(application, client, storm):

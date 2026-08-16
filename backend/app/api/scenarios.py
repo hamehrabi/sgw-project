@@ -59,6 +59,29 @@ async def load_scenario(
         # endpoint exists or what it accepts (`security-specification.md` §7).
         return uploads.refuse(403, "You do not have permission to perform this action.")
 
+    # The legible 400 in front of `scenarios_identity_shape`, and it has to agree with it: if the
+    # trigger's bounds and `store/scenarios.py`'s drift apart, a value between them arrives as a
+    # `500 internal_error` where the contract says `400` — which is what happened to
+    # `dispatch.NEIGHBOURHOOD_MAX` with the whole suite green (CHG-023).
+    #
+    # Before a byte is read, because both of these are refusals that need no file.
+    stored_name = scenarios.storm_text(name, scenarios.NAME_MAX)
+    if stored_name is None:
+        return errors.error(
+            400,
+            "validation_error",
+            f"A storm needs a name of 1 to {scenarios.NAME_MAX} characters. It is what somebody "
+            f"picks this storm out by when several are loaded.",
+        )
+    stored_note = scenarios.storm_text(source_note, scenarios.SOURCE_NOTE_MAX)
+    if stored_note is None:
+        return errors.error(
+            400,
+            "validation_error",
+            f"A storm needs a source note of 1 to {scenarios.SOURCE_NOTE_MAX} characters — which "
+            f"prepared dataset this is, and where it came from.",
+        )
+
     supplied = {file.filename: await file.read() for file in files}
 
     refusal = uploads.check_upload(supplied, config)
@@ -89,8 +112,11 @@ async def load_scenario(
     upload_id = scenarios.start_upload(
         connection,
         uploaded_by=request.state.user["id"],
-        name=name,
-        source_note=key,
+        name=stored_name,
+        # The note the admin typed. It used to be the content digest, because the digest §5's
+        # idempotency rule turns on had no column of its own and squatted in the one
+        # `database-design.md` §3 defines as *where it came from* (CHG-031).
+        source_note=stored_note,
         storage_path=str(directory),
     )
 
@@ -99,8 +125,9 @@ async def load_scenario(
         upload_id,
         directory,
         supplied,
-        name=name,
-        source_note=key,
+        name=stored_name,
+        source_note=stored_note,
+        content_key=key,
         actor_id=request.state.user["id"],
     )
 
@@ -120,6 +147,35 @@ async def load_scenario(
     return JSONResponse(
         status_code=201, content={"scenario_id": scenario_id, "forecast_revision": 0}
     )
+
+
+@router.get("")
+async def list_scenarios(request: Request):
+    """Every loaded storm — `ScenarioSwitcher`'s input, and the endpoint the index did not carry.
+
+    **CHG-030, proposed.** `frontend-component-spec.md` gives the switcher *loaded scenarios:
+    name, source note, loaded date*; `product-spec.md` §9's load flow promises the new storm
+    *"appears in the list alongside any others already loaded, and becomes selectable"*; and the
+    endpoint index carried `POST /scenarios` and `GET /scenarios/{id}` and no collection read. It
+    is CHG-009's shape exactly — a component required to know something with no endpoint that
+    returns it.
+
+    **Signed in, both roles.** `technical-spec.md` §7.2: *Switch between loaded scenarios — Admin
+    yes, User yes*, and `database-design.md` §5: *Scenario — written only by an admin, readable
+    by every signed-in user.* Loading is privileged; choosing which loaded storm to look at is
+    the product.
+
+    **A read, and only a read.** Nothing is marked current, nothing is archived, and no storm
+    changes because somebody looked at a different one.
+    """
+    connection = request.app.state.db
+    rows = scenarios.all_loaded(connection)
+    return {
+        "items": [
+            views.loaded_scenario_item(row, request.app.state.config) for row in rows
+        ],
+        "total": len(rows),
+    }
 
 
 @router.get("/{scenario_id}")
@@ -290,7 +346,11 @@ async def read_decisions(request: Request, scenario_id: str):
 
 @router.get("/{scenario_id}/risks")
 async def read_risks(
-    request: Request, scenario_id: str, forecast_revision: int | None = None, limit: int = 100
+    request: Request,
+    scenario_id: str,
+    forecast_revision: int | None = None,
+    limit: int = 100,
+    cursor: str | None = None,
 ):
     """The ranked risk list. **The core subdomain's endpoint.**
 
@@ -317,12 +377,49 @@ async def read_risks(
             404, "not_found", f"This storm has no forecast revision {revision}."
         )
 
-    rows = rankings.read_ranking(connection, scenario_id, revision, limit=limit)
+    # The page to start at. **Never a silent fall back to the first page** — a caller walking a
+    # list past an unreadable cursor would restart it and believe they had seen the whole storm,
+    # which is §7.3's rule about `forecast_revision` one parameter over.
+    offset = 0
+    if cursor is not None:
+        decoded = views.decode_cursor(cursor)
+        if decoded is None:
+            return errors.error(
+                400,
+                "validation_error",
+                "That cursor could not be read. Ask for the first page and follow next_cursor.",
+            )
+        if decoded["s"] != scenario_id:
+            # REQ-F-010's blend, arriving through the paging parameter: one storm's page served
+            # under another storm's name would look entirely ordinary on screen.
+            return errors.error(
+                400,
+                "validation_error",
+                "That cursor was issued for another storm. A page of one storm's ranking is "
+                "never served under another's.",
+            )
+        if decoded["r"] != revision:
+            return errors.error(
+                400,
+                "validation_error",
+                f"That cursor was issued for forecast revision {decoded['r']} of this storm, "
+                f"not {revision}.",
+            )
+        offset = decoded["o"]
+
+    rows = rankings.read_ranking(connection, scenario_id, revision, limit=limit, offset=offset)
+    total = rankings.count_for(connection, scenario_id, revision)
 
     # FF-005: every delivered ranking has a matching `recommendation` row, so what was shown
     # can be reconstructed later (REQ-F-009). One per revision — re-reading the same ranking
     # is the same recommendation, not a new one, or a reader refreshing a page would fill the
     # audit trail with recommendations nobody made.
+    #
+    # **Recorded from the whole ranking, never from the page.** A recommendation naming the five
+    # rows somebody happened to be looking at cannot reconstruct what was delivered, which is the
+    # only thing the row exists to do.
+    whole = rankings.recorded_ranking(connection, scenario_id, revision)
+    weight_set_version = whole[0]["weight_set_version"] if whole else None
     recommendation = decisions.latest_recommendation(connection, scenario_id, revision)
     if recommendation is None:
         recommendation_id = decisions.append_recommendation(
@@ -330,25 +427,31 @@ async def read_risks(
             scenario_id=scenario_id,
             forecast_revision=revision,
             payload={
-                "weight_set_version": rows[0]["weight_set_version"] if rows else None,
+                "weight_set_version": weight_set_version,
                 "ranked": [
                     {"asset_id": row["asset_id"], "rank": row["rank"], "score": row["score"]}
-                    for row in rows
+                    for row in whole
                 ],
             },
         )
     else:
         recommendation_id = recommendation["id"]
 
+    served = offset + len(rows)
     return {
         "scenario_id": scenario_id,
         "forecast_revision": revision,
         "recommendation_id": recommendation_id,
         "computed_at": rankings.computed_at(connection, scenario_id, revision),
-        "weight_set_version": rows[0]["weight_set_version"] if rows else None,
+        "weight_set_version": weight_set_version,
         # Stated in the payload, not only in a screen's copy: any consumer of this ranking
         # has to be able to see that its numbers are uncalibrated (CHG-014, ADR-007).
         "weights_calibrated": False,
         "items": [views.risk_item(row) for row in rows],
-        "total": rankings.count_for(connection, scenario_id, revision),
+        "total": total,
+        # Null on the last page, so a caller stops rather than asking for an empty one — and the
+        # scope travels inside it, so the next page cannot be asked for against another storm.
+        "next_cursor": (
+            views.encode_cursor(scenario_id, revision, served) if served < total else None
+        ),
     }
