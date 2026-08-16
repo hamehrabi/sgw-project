@@ -16,7 +16,11 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en" className={inter.variable}>
-      <body>{children}</body>
+      {/* suppressHydrationWarning covers ATTRIBUTES OF BODY ONLY, one level deep —
+          browser extensions (Grammarly stamps data-gr-ext-installed) rewrite <body>
+          before React hydrates, and that mismatch is theirs, not ours. Children are
+          still checked, so a real hydration bug in the app is still reported. */}
+      <body suppressHydrationWarning>{children}</body>
     </html>
   )
 }
