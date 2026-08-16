@@ -49,6 +49,13 @@ class LoadedAsset:
     # CON-003's one permitted boolean about an asset (CHG-050). Optional in the file;
     # absent reads as false, because "critical" is a claim somebody made, not a default.
     is_critical_facility: bool = False
+    # CHG-056: the design basis the manifest states for this asset's DIALECT type,
+    # resolved at load. Distribution is built to 90 mph and Transmission Line to 140 and
+    # both are category `line` — a per-category number would misapply the utility's own
+    # basis to half its lines. None means the manifest stated none; the scorer falls
+    # through to the scenario block and then CHG-014's sourced table.
+    design_gust_mph: float | None = None
+    service_life_years: float | None = None
 
 
 @dataclass(frozen=True)

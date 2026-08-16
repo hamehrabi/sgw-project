@@ -169,6 +169,8 @@ def save_loaded_scenario(
                 asset.name,
                 asset.match_status,
                 int(asset.is_critical_facility),
+                asset.design_gust_mph,
+                asset.service_life_years,
                 _now(),
             )
             for asset in result.assets
@@ -177,8 +179,8 @@ def save_loaded_scenario(
             "insert into assets (id, scenario_id, external_ids, type, location, condition,"
             " condition_source, condition_observed_at, condition_estimated, grid_cell_id,"
             " wind_gust_mph, rainfall_in, install_year, flood_zone, name, match_status,"
-            " is_critical_facility, created_at)"
-            " values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            " is_critical_facility, design_gust_mph, service_life_years, created_at)"
+            " values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             asset_rows,
         )
         # The whole forecast series, in the same transaction (CHG-025). A storm without its
@@ -275,7 +277,8 @@ def assets_with_forecast(connection, scenario_id, forecast_revision) -> list[sql
     return connection.execute(
         "select a.id, a.external_ids, a.name, a.type, a.flood_zone, a.install_year,"
         " a.condition, a.condition_source, a.condition_observed_at, a.condition_estimated,"
-        " a.grid_cell_id, f.wind_gust_mph as wind_gust_mph,"
+        " a.grid_cell_id, a.design_gust_mph, a.service_life_years,"
+        " f.wind_gust_mph as wind_gust_mph,"
         " f.valid_time as forecast_valid_time"
         " from assets a"
         " left join scenario_forecast_cells f"

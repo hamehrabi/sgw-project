@@ -60,6 +60,11 @@ class _Scorable:
     condition_observed_at: str | None
     condition_estimated: bool
     wind_gust_mph: float | None
+    # CHG-056: the design basis the manifest stated for this asset's dialect type, when
+    # it stated one. Read by the scorer FIRST — supplied beats stated-per-category beats
+    # CHG-014's engineering standard, never a guess.
+    design_gust_mph: float | None = None
+    service_life_years: float | None = None
 
 
 @dataclass
@@ -91,6 +96,8 @@ def as_scorable(rows) -> list[_Scorable]:
             condition_observed_at=row["condition_observed_at"],
             condition_estimated=bool(row["condition_estimated"]),
             wind_gust_mph=row["wind_gust_mph"],
+            design_gust_mph=row["design_gust_mph"],
+            service_life_years=row["service_life_years"],
         )
         for row in rows
     ]

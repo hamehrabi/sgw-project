@@ -204,7 +204,24 @@ def score_asset(asset, *, weights=None, references=None, today: date | None = No
     )
 
     reference = references.get(asset.type)
-    if reference is None:
+    # CHG-056: a basis the manifest stated for this asset outranks the per-category one.
+    # Per-field, so a manifest that states the gust basis and omits the life gets the
+    # category's life — supplied beats stated-per-category beats CHG-014's standard.
+    supplied_gust = getattr(asset, "design_gust_mph", None)
+    supplied_life = getattr(asset, "service_life_years", None)
+    if supplied_gust is not None or supplied_life is not None:
+        reference = ref.AssetTypeReference(
+            design_gust_mph=supplied_gust
+            if supplied_gust is not None
+            else (reference.design_gust_mph if reference else None),
+            service_life_years=supplied_life
+            if supplied_life is not None
+            else (reference.service_life_years if reference else None),
+            source="manifest design_references — the utility's own stated basis",
+        )
+    if reference is None or reference.design_gust_mph is None or (
+        reference.service_life_years is None
+    ):
         ranked.unscored_reason = f"no design reference for asset type {asset.type!r}"
         return ranked
 

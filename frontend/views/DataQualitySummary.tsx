@@ -52,14 +52,18 @@ export function DataQualitySummary({
     void read()
   }, [read])
 
-  async function resolve(finding: Finding) {
-    if (finding.defect === 1) {
+  async function resolve(group: Finding[]) {
+    if (group[0].defect === 1) {
       // Defect 1's action is a review, not a resolution — the queue is the answer.
       onReviewMatches()
       return
     }
     try {
-      await insights.resolveFinding(scenarioId, finding.finding_id, ACTIONS[finding.defect])
+      // One human decision answers the whole group — recorded on every row it covers,
+      // so each stays traceable to its subject.
+      for (const finding of group) {
+        await insights.resolveFinding(scenarioId, finding.finding_id, ACTIONS[finding.defect])
+      }
       await read()
     } catch (error) {
       setProblem(
@@ -79,8 +83,17 @@ export function DataQualitySummary({
   }
 
   const open = findings.filter((finding) => finding.needs_decision && !finding.resolution)
-  const visible = open.slice(0, 3) // the three-row rule — never more
   const handled = findings.filter((finding) => !finding.needs_decision || finding.resolution)
+
+  // One question per DEFECT, not per row: the Delia pack carries ~80 zero-total rows,
+  // and eighty identical cards each demanding a click is a wall, not a decision. Each
+  // group is one card — the count, one representative sentence, one action that answers
+  // the whole group — and the three-row rule then caps the groups, not the rows.
+  const groups = new Map<number, Finding[]>()
+  for (const finding of open) {
+    groups.set(finding.defect, [...(groups.get(finding.defect) ?? []), finding])
+  }
+  const visible = Array.from(groups.values()).slice(0, 3)
 
   return (
     <Card data-testid="data-quality-summary">
@@ -88,11 +101,11 @@ export function DataQualitySummary({
         <CardTitle>Data quality summary</CardTitle>
         <CardDescription>
           {assetCount !== null ? `${assetCount} assets loaded. ` : ''}5 files matched.{' '}
-          {open.length > 0 ? (
+          {visible.length > 0 ? (
             <span className="font-medium text-high-fg">
-              {open.length === 1
+              {visible.length === 1
                 ? 'One thing needs your eye.'
-                : `${Math.min(open.length, 3)} things need your eye.`}
+                : `${visible.length} things need your eye.`}
             </span>
           ) : (
             'Nothing needs a decision.'
@@ -106,21 +119,24 @@ export function DataQualitySummary({
           </p>
         )}
 
-        {visible.map((finding) => (
+        {visible.map((group) => (
           <div
-            key={finding.finding_id}
+            key={group[0].defect}
             className="flex items-center justify-between gap-4 rounded-card border border-line p-3"
             data-testid="finding-needs-decision"
           >
             <div className="flex items-start gap-2.5">
               <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-high-fg" aria-hidden />
               <p className="text-[13px] leading-relaxed">
-                {finding.message}{' '}
-                <span className="text-muted">({finding.affected_file})</span>
+                {group.length > 1 && (
+                  <span className="font-medium">{group.length} findings like this: </span>
+                )}
+                {group[0].message}{' '}
+                <span className="text-muted">({group[0].affected_file})</span>
               </p>
             </div>
-            <Button size="sm" onClick={() => void resolve(finding)}>
-              {ACTIONS[finding.defect] ?? 'Noted'}
+            <Button size="sm" className="shrink-0" onClick={() => void resolve(group)}>
+              {ACTIONS[group[0].defect] ?? 'Noted'}
             </Button>
           </div>
         ))}
