@@ -23,7 +23,17 @@
 
 import { useCallback, useEffect, useState } from 'react'
 
-import { Board, RepairJob, RequestFailed, dispatch } from '@/lib/api'
+import { Board, DamageReport, RepairJob, RequestFailed, dispatch } from '@/lib/api'
+
+function Report({ report }: { report: DamageReport }) {
+  return (
+    <li data-testid="job-report">
+      <span className="job__time">{report.reported_at}</span>
+      {report.asset_id ? ` · asset ${report.asset_id}` : ' · no asset named'}
+      {report.status !== 'open' && <span className="badge"> {report.status}</span>}
+    </li>
+  )
+}
 
 function Job({ job }: { job: RepairJob }) {
   return (
@@ -49,14 +59,35 @@ function Job({ job }: { job: RepairJob }) {
       </div>
       <ul className="job__reports">
         {job.reports.map((report) => (
-          <li key={report.report_id} data-testid="job-report">
-            <span className="job__time">{report.reported_at}</span>
-            {report.asset_id ? ` · asset ${report.asset_id}` : ' · no asset named'}
-            {report.status !== 'open' && <span className="badge"> {report.status}</span>}
-          </li>
+          <Report key={report.report_id} report={report} />
         ))}
       </ul>
     </li>
+  )
+}
+
+/**
+ * Reports that belong to no repair job (CHG-022).
+ *
+ * `repair_job_id` is optional in the schema, so this state exists — and a board that renders
+ * only jobs puts those reports on no screen at all. A shared dispatch board that silently drops
+ * work is the one thing `frontend-component-spec.md` says this screen must never do, and an
+ * empty screen must never read as safety.
+ */
+function Unattached({ reports }: { reports: DamageReport[] }) {
+  if (reports.length === 0) return null
+  return (
+    <section className="board__unattached" data-testid="board-unattached">
+      <h3>
+        {reports.length} report(s) with no repair job raised yet — still work, still on this
+        board
+      </h3>
+      <ul className="job__reports">
+        {reports.map((report) => (
+          <Report key={report.report_id} report={report} />
+        ))}
+      </ul>
+    </section>
   )
 }
 
@@ -140,26 +171,34 @@ export function DispatchBoard({ scenarioId }: { scenarioId: string }) {
         </p>
       )}
 
-      {state === 'ready' && board && board.items.length === 0 && (
-        <p role="status" data-testid="board-empty">
-          <strong>No damage reported.</strong> Nothing has been called in yet — this is not a
-          statement that the network is all clear.
-        </p>
-      )}
-
-      {state === 'ready' && board && board.items.length > 0 && (
-        <>
-          <p className="board__summary" data-testid="board-summary">
-            {board.report_count} report(s) across {board.job_count} job(s). Two reports at one
-            location are one job, so no crew is sent where another already is.
+      {/* Empty means nothing on the board at all — including a report no job was raised for.
+          Testing `items.length` alone would call the board empty while work sat on it. */}
+      {state === 'ready' &&
+        board &&
+        board.items.length === 0 &&
+        board.unattached_reports.length === 0 && (
+          <p role="status" data-testid="board-empty">
+            <strong>No damage reported.</strong> Nothing has been called in yet — this is not a
+            statement that the network is all clear.
           </p>
-          <ul className="board__jobs">
-            {board.items.map((job) => (
-              <Job key={job.job_id} job={job} />
-            ))}
-          </ul>
-        </>
-      )}
+        )}
+
+      {state === 'ready' &&
+        board &&
+        (board.items.length > 0 || board.unattached_reports.length > 0) && (
+          <>
+            <p className="board__summary" data-testid="board-summary">
+              {board.report_count} report(s) across {board.job_count} job(s). Two reports at one
+              location are one job, so no crew is sent where another already is.
+            </p>
+            <ul className="board__jobs">
+              {board.items.map((job) => (
+                <Job key={job.job_id} job={job} />
+              ))}
+            </ul>
+            <Unattached reports={board.unattached_reports} />
+          </>
+        )}
     </section>
   )
 }

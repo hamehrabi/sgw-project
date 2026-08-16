@@ -62,30 +62,45 @@ and that three of the task's own done criteria were proven by nothing. All eight
 fixed and mutation-checked (`TASK-005.md`, *What the second review found*), and the suite has
 been run twelve times without a red. **It is not Done until somebody who did not fix it says so.**
 
-**The re-review happened on 2026-08-16 and the decision was Block again.** The gate is green —
-264 tests over three runs, no red — and the CHG-018 ordering fix holds. But **done criterion 3
-is not met**: `unique (scenario_id, location_key)` refuses only a byte-identical key, so the
-case- and spacing-insensitivity that *defines* "the same location" lives only in
+**The re-review happened on 2026-08-16 and the decision was Block again.** The gate was green —
+264 tests over three runs, no red — and the CHG-018 ordering fix held. But **done criterion 3
+was not met**: `unique (scenario_id, location_key)` refuses only a byte-identical key, so the
+case- and spacing-insensitivity that *defines* "the same location" lived only in
 `store/dispatch.py`, and a second job for one neighbourhood inserted directly against the
-database is **accepted**. That is this log's pre-declared Block condition for the second review
-running. Two smaller failures — the durable `seq` order is asserted only inside one process
-lifetime, and the store's location check has a clause no test ever violates — and one new
+database was **accepted**. That is this log's pre-declared Block condition for the second review
+running. Two smaller failures — the durable `seq` order asserted only inside one process
+lifetime, and a clause of the store's location check that no test ever violated — and one new
 proposed entry, **CHG-022**. All four checks and their mutations are in `review-log.md`.
-**TASK-006 must not be started on the assumption that TASK-005 is accepted.**
+
+**All four findings and both observations were fixed the same day, and TASK-005 is still not
+Done.** Migration 009 puts the normalisation in the schema (**CHG-023**): `repair_jobs` refuses
+a `location_key` that is not already lower-cased, trimmed and singly-spaced, so the unique
+constraint has no second spelling left to miss. CHG-022 is implemented. The restart the durable
+order was never crossed is now crossed by three cases. Writing the missing test for the
+unexercised length clause **found that clause was also wrong** — SQLite's `trim()` strips spaces
+only, so a tab-and-newline location was storable while a spaces-only one was refused — and 009
+closes that too. **CHG-024** records the `on delete cascade` observation with its alternatives
+rather than changing it inside a remediation for something else. Suite 294 + 1 skipped over four
+runs, whole gate green, every fix mutation-checked (`TASK-005.md`, *What the third review
+found*). **TASK-006 must not be started on the assumption that TASK-005 is accepted** — three
+reviews have each found something the previous one did not.
 
 **The ordering defect was never TASK-005's alone**, which is why this row matters to TASK-004 as
 well: `decision_records` has been intermittently mis-ordered since migration 006, and
 `latest_recommendation` could return the wrong recommendation outright. That is fixed by the
 same migration.
 
-**Seven change entries are open against this task and none is accepted.** **CHG-016** (no endpoint
+**Nine change entries are open against this task and none is accepted.** **CHG-016** (no endpoint
 creates a damage report), **CHG-017** (`repair_jobs` had nowhere to keep the location it
 answers, and `damage_reports.location` had no fixed resolution), **CHG-018** (a monotonic `seq`,
 because a timestamp is not a total order), **CHG-019** (composite foreign keys — a foreign key
 proved an asset existed, never that it was in this storm), **CHG-020** (a job's location
-survives the dismissal of the report it came from), **CHG-021** (`duplicate` given a reader) and
-**CHG-022** (a damage report belonging to no repair job is on no screen and in no figure — raised
-at the third review, and **not implemented**). All are **proposed**: the build could not proceed
+survives the dismissal of the report it came from), **CHG-021** (`duplicate` given a reader),
+**CHG-022** (a damage report belonging to no repair job is on no screen and in no figure —
+raised at the third review, **now implemented**), **CHG-023** (the store, not the service, is
+what decides that two spellings are one location — and one length bound governs both columns
+and the service constant) and **CHG-024** (what happens to a damage report when the asset it
+names is deleted; the cascade is kept and the alternatives recorded). All are **proposed**: the build could not proceed
 without deciding them, and none of the decisions is the agent's to accept. The row above gains **REQ-NF-007** and **UTEST-012** for a
 different reason — `traceability.md` already puts that requirement on TASK-002 and TASK-005, and
 this is the first task in which a damage location exists to be aggregated, so it is the first

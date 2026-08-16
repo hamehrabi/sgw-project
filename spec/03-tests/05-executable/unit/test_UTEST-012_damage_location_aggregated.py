@@ -22,12 +22,21 @@ neither wrong rule could be made to fail. The fixtures below keep the three apar
 
 import json
 import logging
+import re
 import sqlite3
 
 import pytest
+from app.store import dispatch
 from conftest import sign_in
 
 FORBIDDEN_IN_A_LOG = ("street", "avenue", "meter", "account", "33.7", "-118.5")
+
+# The bound the schema and the service must agree on, referenced rather than repeated. Written
+# out once here so a reader can see what the cases below are made of; every use goes through
+# `dispatch.NEIGHBOURHOOD_MAX`, and `test_one_bound_governs_a_neighbourhoods_length` is what
+# ties that constant to the two copies in the schema.
+AT_THE_LIMIT = "N" * dispatch.NEIGHBOURHOOD_MAX
+OVER_THE_LIMIT = "N" * (dispatch.NEIGHBOURHOOD_MAX + 1)
 
 
 def a_storm(application, accounts):
@@ -72,6 +81,14 @@ def everything_logged(caplog):
         '{"neighbourhood": null}',
         "{}",
         "not json at all",
+        # The fourth clause of the same constraint, which nothing used to reach. `length(trim
+        # (...)) between 1 and 120` was exercised by no test at all — no empty neighbourhood,
+        # no whitespace-only one, no over-length one, at the store or at the endpoint — and
+        # relaxing it to `between 1 and 100000` left all 264 tests green.
+        '{"neighbourhood": ""}',
+        '{"neighbourhood": "   "}',
+        '{"neighbourhood": "\\t\\n"}',
+        json.dumps({"neighbourhood": OVER_THE_LIMIT}),
     ],
 )
 def test_the_store_refuses_a_location_finer_than_a_neighbourhood(
@@ -103,6 +120,142 @@ def test_the_store_accepts_a_neighbourhood(application, accounts):
         "select location from damage_reports where id = 'DR-direct'"
     ).fetchone()
     assert json.loads(stored["location"]) == {"neighbourhood": "Northgate"}
+
+
+def test_the_store_accepts_a_neighbourhood_exactly_at_the_bound(application, accounts):
+    """The boundary from the permitted side, so the refusals above are refusing a length rather
+    than refusing long names in general."""
+    scenario_id = a_storm(application, accounts)
+
+    insert_report(application.state.db, scenario_id, json.dumps({"neighbourhood": AT_THE_LIMIT}))
+    application.state.db.commit()
+
+    assert application.state.db.execute(
+        "select count(*) from damage_reports"
+    ).fetchone()[0] == 1
+
+
+def test_the_store_refuses_a_repair_job_key_over_the_bound(application, accounts):
+    """The same bound on the other column. `repair_jobs.location_key` carries its own copy of
+    `between 1 and 120` (CHG-023), and a key is derived from a neighbourhood, so the two have
+    to be the same number or one of them is unreachable."""
+    scenario_id = a_storm(application, accounts)
+
+    with pytest.raises(sqlite3.IntegrityError, match="CHECK constraint failed"):
+        application.state.db.execute(
+            "insert into repair_jobs"
+            " (id, scenario_id, status, location_key, created_at, updated_at, seq)"
+            " values ('RJ-long', ?, 'pending', ?, '2026-08-16T00:00:00Z',"
+            " '2026-08-16T00:00:00Z', 1)",
+            (scenario_id, OVER_THE_LIMIT.lower()),
+        )
+    application.state.db.rollback()
+
+
+BOUND = re.compile(r"between\s+1\s+and\s+(\d+)")
+
+
+def test_one_bound_governs_a_neighbourhoods_length(application):
+    """**The bound was three hard-coded copies with nothing tying them together.**
+
+    `damage_reports.location`, `repair_jobs.location_key` and `dispatch.NEIGHBOURHOOD_MAX` each
+    carried 120 and none of them knew about the others. Leaving the schema at 120 and setting
+    the service constant to 5000 turns the `400 validation_error` the API contract specifies
+    into a `500 internal_error` for a 121-character neighbourhood, and the whole suite stayed
+    green through that. This is the tie: move any one of the three and it is red.
+    """
+    schema = {
+        row["name"]: row["sql"]
+        for row in application.state.db.execute(
+            "select name, sql from sqlite_master where type = 'table'"
+        )
+    }
+
+    # The haystack first. An enumeration that stopped returning tables would make every
+    # assertion below vacuous, and "no bound disagreed" is worth nothing without "bounds exist".
+    assert {"damage_reports", "repair_jobs"} <= set(schema)
+    found = {
+        name: [int(value) for value in BOUND.findall(schema[name])]
+        for name in ("damage_reports", "repair_jobs")
+    }
+    assert all(found.values()), f"no length bound in the schema at all: {found}"
+
+    for name, bounds in found.items():
+        assert bounds == [dispatch.NEIGHBOURHOOD_MAX] * len(bounds), (
+            f"{name} bounds a neighbourhood at {bounds} and the service refuses at "
+            f"{dispatch.NEIGHBOURHOOD_MAX} — the endpoint's 400 becomes a 500 between them"
+        )
+
+
+def test_the_endpoint_refuses_an_over_length_neighbourhood_as_a_400_not_a_500(
+    client, application, accounts
+):
+    """The contract half of the same tie, read from the caller's side. A neighbourhood one
+    character over the bound is a caller mistake and must be answered as one — a `500` here
+    says the platform broke, which sends a dispatcher to the wrong person during a storm."""
+    sign_in(client, accounts["user"]["email"], accounts["user"]["password"])
+    scenario_id = a_storm(application, accounts)
+
+    refused = client.post(
+        f"/api/v1/scenarios/{scenario_id}/damage-reports",
+        json={"neighbourhood": OVER_THE_LIMIT},
+    )
+    accepted = client.post(
+        f"/api/v1/scenarios/{scenario_id}/damage-reports", json={"neighbourhood": AT_THE_LIMIT}
+    )
+
+    assert refused.status_code == 400, refused.text
+    assert refused.json()["code"] == "validation_error"
+    # The permitted side beside it, so "refuses over-length" is not satisfied by refusing
+    # everything long.
+    assert accepted.status_code == 201, accepted.text
+    assert application.state.db.execute(
+        "select count(*) from damage_reports"
+    ).fetchone()[0] == 1
+
+
+@pytest.mark.parametrize("blank", ["", "   ", "\t\n "])
+def test_the_endpoint_refuses_a_neighbourhood_that_is_not_a_place(
+    client, application, accounts, blank
+):
+    """Empty and whitespace-only, at the endpoint as well as at the store. A report filed
+    against no place at all is work nobody can be sent to."""
+    sign_in(client, accounts["user"]["email"], accounts["user"]["password"])
+    scenario_id = a_storm(application, accounts)
+
+    refused = client.post(
+        f"/api/v1/scenarios/{scenario_id}/damage-reports", json={"neighbourhood": blank}
+    )
+
+    assert refused.status_code == 400
+    assert refused.json()["code"] == "validation_error"
+    assert application.state.db.execute(
+        "select count(*) from damage_reports"
+    ).fetchone()[0] == 0
+
+
+def test_the_endpoint_refuses_a_neighbourhood_whose_key_would_be_too_long(
+    client, application, accounts
+):
+    """The silent case for the bound: casefolding can make a string **longer**. `'ß'.casefold()`
+    is `'ss'`, so a neighbourhood the display column accepts produces a `location_key` twice as
+    long that `repair_jobs` refuses — a `500` where the contract specifies a `400`, and only
+    measuring both forms catches it."""
+    sign_in(client, accounts["user"]["email"], accounts["user"]["password"])
+    scenario_id = a_storm(application, accounts)
+
+    grows = "ß" * dispatch.NEIGHBOURHOOD_MAX
+    assert len(grows) == dispatch.NEIGHBOURHOOD_MAX, "the display name is inside the bound"
+    assert len(dispatch.location_key(grows)) > dispatch.NEIGHBOURHOOD_MAX, "its key is not"
+
+    refused = client.post(
+        f"/api/v1/scenarios/{scenario_id}/damage-reports", json={"neighbourhood": grows}
+    )
+
+    assert refused.status_code == 400, refused.text
+    assert application.state.db.execute(
+        "select count(*) from damage_reports"
+    ).fetchone()[0] == 0
 
 
 def test_the_endpoint_refuses_a_household_field_outright(client, application, accounts):
@@ -311,6 +464,90 @@ def test_a_duplicate_report_is_not_counted_as_open_work_in_the_area(
     assert dispatch.open_reports_in_area(connection, scenario_id, key) == 2, (
         "a second call about damage already counted is not a second piece of open work"
     )
+
+
+def test_an_open_report_with_no_repair_job_is_counted_in_its_own_neighbourhood(
+    client, application, accounts, caplog
+):
+    """**CHG-022, and the figure was wrong in the direction that under-reports.**
+
+    `open_reports_in_area` was an INNER join through `repair_jobs`, so a report whose
+    `repair_job_id` is null — a state `database-design.md` §3 permits and §1 describes — was
+    missing from the count entirely. Two open reports in one neighbourhood logged
+    `open_reports_in_area=1`, and a dispatcher reading that figure sees half the calls.
+
+    Three numbers again, all different, so no coarser or finer answer can pass by accident:
+    3 open in the storm, 2 in Northgate, 1 of those attached to a job.
+    """
+    caplog.set_level(logging.DEBUG)
+    sign_in(client, accounts["user"]["email"], accounts["user"]["password"])
+    scenario_id = a_storm(application, accounts)
+
+    client.post(
+        f"/api/v1/scenarios/{scenario_id}/damage-reports", json={"neighbourhood": "Harbour West"}
+    )
+    insert_report(
+        application.state.db,
+        scenario_id,
+        json.dumps({"neighbourhood": "Northgate"}),
+        report_id="DR-no-job",
+        seq=90,
+    )
+    application.state.db.commit()
+    caplog.clear()
+
+    client.post(
+        f"/api/v1/scenarios/{scenario_id}/damage-reports", json={"neighbourhood": "Northgate"}
+    )
+    logged = everything_logged(caplog)
+
+    connection = application.state.db
+    assert connection.execute(
+        "select count(*) from damage_reports where scenario_id = ? and status = 'open'",
+        (scenario_id,),
+    ).fetchone()[0] == 3, "three open in the storm, so the storm figure is a different number"
+    assert connection.execute(
+        "select count(*) from damage_reports where scenario_id = ?"
+        " and repair_job_id is not null and status = 'open'",
+        (scenario_id,),
+    ).fetchone()[0] == 2, "and two of them hang off a job at all"
+    assert dispatch.open_reports_in_area(
+        connection, scenario_id, dispatch.location_key("Northgate")
+    ) == 2
+    assert "open_reports_in_area=2" in logged
+    assert "open_reports_in_area=1" not in logged, (
+        "that is the joined reports only — the unattached call is on nobody's screen"
+    )
+
+
+def test_a_report_with_no_job_in_another_area_is_not_counted_here(
+    client, application, accounts
+):
+    """The silent case for the fix: counting *every* unattached report regardless of where it
+    came from would satisfy the test above and turn a neighbourhood figure into a storm figure
+    the moment a job is missing."""
+    sign_in(client, accounts["user"]["email"], accounts["user"]["password"])
+    scenario_id = a_storm(application, accounts)
+
+    insert_report(
+        application.state.db,
+        scenario_id,
+        json.dumps({"neighbourhood": "Saltmarsh"}),
+        report_id="DR-elsewhere",
+        seq=91,
+    )
+    application.state.db.commit()
+    client.post(
+        f"/api/v1/scenarios/{scenario_id}/damage-reports", json={"neighbourhood": "Northgate"}
+    )
+
+    connection = application.state.db
+    assert dispatch.open_reports_in_area(
+        connection, scenario_id, dispatch.location_key("Northgate")
+    ) == 1
+    assert dispatch.open_reports_in_area(
+        connection, scenario_id, dispatch.location_key("Saltmarsh")
+    ) == 1
 
 
 def test_the_board_export_carries_no_location_finer_than_a_neighbourhood(

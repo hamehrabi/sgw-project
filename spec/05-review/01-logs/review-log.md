@@ -23,7 +23,43 @@
 
 | 2026-08-16 | **TASK-005 re-reviewed after remediation**, against its own done criteria — migration 007 and 008, `store/dispatch.py`, `store/decisions.py`, `api/dispatch.py`, `api/views.py`, `DispatchBoard.tsx`, and the five executable test files including `e2e/ATEST-007.spec.ts` | TASK-005 / REQ-F-007, REQ-NF-007, AC-007, ADR-002, CHG-018 | A third agent run, which **neither wrote nor fixed** TASK-005 — but author, fixer and reviewer are still the same process (**Q-026**, see the note below) | Requirement fit · Architecture fit · Security & validation · Performance · Test evidence · Change scope | **The full gate is green — and three of four directed checks failed, each confirmed by a mutation the gate did not notice.** `pytest` 264 + 1 skipped, run **three** times with no red, so the CHG-018 ordering fix holds. **Done criterion 3 is not met**: `unique (scenario_id, location_key)` refuses only a byte-identical key, so the case- and spacing-insensitivity that *defines* "the same location" lives only in `store/dispatch.py` — this log's pre-declared **Block** condition, one review after the same condition blocked this task. Two smaller failures: the durable order CHG-018 introduced is asserted only inside one process lifetime, and the store's own location check has a clause no test ever violates. One specification gap raised and left **proposed**: **CHG-022** (a damage report belonging to no repair job is on no screen and in no figure). | **Block** | Put the normalised key in the schema, then close CHG-022; the seven proposed entries need a human decision; TASK-006 must not be started on the assumption that this is accepted |
 
+| 2026-08-16 | **TASK-005 remediation, second time** — migration 009, `store/dispatch.py`, `api/views.py`, `api/dispatch.py`, `lib/api.ts`, `DispatchBoard.tsx`, three executable test files and one new one | TASK-005 / REQ-F-007, REQ-NF-007, AC-007, ADR-002, CON-003, CHG-018 | The agent that fixed the Block — **not a reviewer, and this row is not an acceptance** (see the note under the previous remediation row, which applies unchanged) | Requirement fit · Architecture fit · Security & validation · Test evidence · Change scope | All four findings and both observations closed, each with the mutation that now makes it red recorded in `TASK-005.md`. **The Block is answered in the schema**: `repair_jobs` carries a check that the stored `location_key` is already normalised, so `Northgate`, `north  gate` and a tab all bounce at the database — `collate nocase` was the named remedy and is **declined in writing**, because it is unreachable beside that check and unsound without it. CHG-022 is implemented. Writing the missing test for CON-003's fourth clause **found a further hole in it**: SQLite's `trim()` strips spaces only, so `"\t\n"` was a storable damage location while `"   "` was not; migration 009 closes that too. Suite 294 + 1 skipped, run **four** times with no red; `ruff`, `ci/fitness.py` (6 of 7), `ci/evals.py`, `tsc`, `lint`, `build` and all 14 Playwright specs pass. Two change entries raised and left **proposed**: **CHG-023** (the normalisation and the single bound) and **CHG-024** (the `on delete cascade` observation, kept with its reasons rather than changed inside a remediation for something else). | **Fixed — awaiting re-review** | Nine proposed entries now need a human decision; TASK-006 is next and must not be started on the assumption that this is accepted |
+
 **Decision values:** Accept · Accept with follow-up · Revise · Reject · Block
+
+### The second remediation — what was fixed, and the one place the review's own remedy was not taken
+
+**Each fix names the mutation that turns it red, because that is the part a later reader can
+check.** Every mutation below was applied, the **whole** suite run, and reverted;
+`git status --short` showed no unexpected file after each one.
+
+| Finding | Mutation that is now red |
+|---|---|
+| Done criterion 3 — the grouping rule in the store | Removing the normalisation check from migration 009 fails **8** tests, six of them the direct inserts `Northgate`, `NORTHGATE`, `northgate `, ` northgate`, `north  gate` and `north\tgate` |
+| The durable order across a restart | The review's own mutation — `_SEQ[(id(connection), table)] += 1` beside the connection — fails 2 of the 3 new restart cases with `500 internal_error`, exactly as predicted; the same mutation in `store/decisions.py` fails the third |
+| CHG-022 — a report with no repair job | Emptying the `None` bucket in `board_body` fails 3; restoring the inner join in `open_reports_in_area` fails 2 |
+| The unexercised length clause | Relaxing the schema to `between 1 and 100000` **and** raising `NEIGHBOURHOOD_MAX` to 5000 fails 3; leaving the schema at 120 with the constant at 5000 fails 3, one of them the `400` that had become a `500` |
+| STEST-001's missing row | Deleting the `damage-reports` row from `DATA_ROUTES` fails the new coverage test, naming the endpoint |
+
+**The review named `unique (scenario_id, location_key collate nocase)` and it was not used.**
+Saying so plainly is the point of this paragraph. The check constraint is the whole fix, and
+the collation beside it would be **unreachable**: `nocase` folds ASCII `A–Z` and nothing else,
+and every string the check admits is already ASCII-lower-cased, so no two keys the table can
+hold collide under `nocase` without colliding under `binary` first. This log records four
+gates that could not fail — FF-002, FF-003, TASK-002's two defect rules — and one ordinary test
+that could not fail, and adding a fifth on purpose is not defence in depth. The collation is
+also **not sufficient alone**, which is the other half of the argument: with only the index, a
+direct `Northgate` into an empty table is *accepted*, and the next report filed for that
+neighbourhood misses it on a `binary` lookup, tries to create a second job, and hands the
+dispatcher a `500`. Both halves are in **CHG-023** with the alternatives declined.
+
+**One thing was found while fixing rather than by the review, and it is the more interesting
+of the two.** Writing the missing case for `length(trim(…)) between 1 and 120` — the clause
+the review showed nothing reached — turned up that the clause was also *wrong*: SQLite's
+`trim()` strips **spaces only**, so `{"neighbourhood": "   "}` was refused and
+`{"neighbourhood": "\t\n"}` was stored. A whitespace-only location, admitted because it used a
+different whitespace character. That is the review's fourth check paying twice: an unexercised
+clause was not merely unproven, it was untrue.
 
 ### The third review of TASK-005 — four checks, three of them failed
 

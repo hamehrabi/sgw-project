@@ -6,6 +6,15 @@ optimisation of that constraint, not the enforcement of it. Delete this module's
 logic and the database still refuses the second job — which is the property the rule needs,
 because the failure it prevents is two crews at one location during a storm.
 
+**And so does the rule that says which two locations are one** (CHG-023, migration 009). That
+sentence above was written when 007 shipped and it was only three quarters true: the unique
+constraint refused a byte-identical key, while the casefold-and-collapse that *defines* the
+same location lived in `location_key()` below and nowhere else. Beside a stored `northgate`
+the store accepted `Northgate`, and it accepted `north  gate`, and the board then rendered two
+repair jobs for one neighbourhood. `repair_jobs` now carries a check that the stored key is
+already normalised, so an un-normalised key cannot be written at all and the constraint has no
+second spelling left to miss.
+
 **So does the storm scope** (CHG-019, migration 008). A report may only name an asset and a
 repair job belonging to the storm it is filed against, and the composite foreign keys over
 `(id, scenario_id)` are what refuse the rest. Until 008 that rule lived in an `if` in
@@ -40,6 +49,14 @@ JOBS_SQL = "select * from repair_jobs where scenario_id = ? order by seq"
 REPORTS_SQL = "select * from damage_reports where scenario_id = ? order by seq"
 
 OPEN = "open"
+
+# **One bound, and the schema holds the same number twice.** `damage_reports.location` and
+# `repair_jobs.location_key` both carry `between 1 and 120`, and this constant is what turns a
+# neighbourhood over that length into the specified `400 validation_error` instead of a
+# `500 internal_error` from the store. They were three copies with nothing tying them together:
+# leaving the schema at 120 and setting this to 5000 broke the endpoint's contract and the whole
+# suite stayed green. UTEST-012 now reads the bound out of `sqlite_master` and requires all
+# three to agree, so moving one of them alone is red.
 NEIGHBOURHOOD_MAX = 120
 
 
@@ -57,8 +74,28 @@ def location_key(neighbourhood: str) -> str:
 
     Case- and spacing-insensitive, because a capital letter is not a second location and the
     cost of treating it as one is a second crew.
+
+    **This function is not the rule and must not be read as one** (ADR-002, CHG-023). Migration
+    009 puts the same normalisation in `repair_jobs` as a check constraint, so a key that did
+    not come through here cannot be stored. What this buys is that the *right* key is computed
+    before the insert; what the schema buys is that no other key is storable at all.
     """
     return normalise(neighbourhood).casefold()
+
+
+def too_long(neighbourhood: str) -> bool:
+    """Would the store refuse this neighbourhood for its length?
+
+    Both forms are measured, because they are stored in different columns and casefolding can
+    make a string *longer*: `'ß'.casefold()` is `'ss'`, so 120 of them normalise to a display
+    name the schema accepts and a key of 240 characters it does not. Checking only the display
+    name would turn that into a `500` for the caller, which is the shape this bound was found
+    in the first place.
+    """
+    return (
+        len(normalise(neighbourhood)) > NEIGHBOURHOOD_MAX
+        or len(location_key(neighbourhood)) > NEIGHBOURHOOD_MAX
+    )
 
 
 def find_report(connection, report_id) -> sqlite3.Row | None:
@@ -154,11 +191,27 @@ def open_reports_in_area(connection, scenario_id, key) -> int:
 
     Open means `status = 'open'`. A report marked `duplicate` is a second call about damage
     already counted, and counting it twice would overstate the area's open work (CHG-021).
+
+    **A report belonging to no repair job is counted in its own neighbourhood** (CHG-022). This
+    was an INNER join through `repair_jobs`, so a report whose `repair_job_id` is null — a state
+    `database-design.md` §3 permits and §1 describes, *"to **at most** one repair job"* — was
+    missing from the figure entirely: two open reports in one neighbourhood logged
+    `open_reports_in_area=1`, which is REQ-NF-007's figure wrong in the direction that
+    under-reports. A left join and the report's own neighbourhood fix it, and the report's own
+    neighbourhood is the right fallback because `location` is the only place the fact is stored
+    when no job holds it.
+
+    The fallback is `lower(trim(...))` rather than a re-run of `location_key()`: SQL cannot
+    collapse a run of spaces, and it does not have to — the only writer normalises before the
+    insert, so the stored display name differs from its key by case alone.
     """
     return connection.execute(
         "select count(*) from damage_reports as reports"
-        " join repair_jobs as jobs on jobs.id = reports.repair_job_id"
-        " where reports.scenario_id = ? and jobs.location_key = ?"
+        " left join repair_jobs as jobs"
+        "   on jobs.id = reports.repair_job_id and jobs.scenario_id = reports.scenario_id"
+        " where reports.scenario_id = ?"
+        " and coalesce(jobs.location_key,"
+        "              lower(trim(json_extract(reports.location, '$.neighbourhood')))) = ?"
         " and reports.status = 'open'",
         (scenario_id, key),
     ).fetchone()[0]

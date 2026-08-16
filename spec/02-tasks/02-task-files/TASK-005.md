@@ -7,7 +7,7 @@
 **Task ID:** TASK-005
 **Task title:** Dispatch board — one shared damage and repair list
 **Priority:** P1
-**Status:** **In review** — built 2026-08-16, **blocked at a second review the same day**, and the four findings fixed (see *What the second review found* below). Six change entries are now open against this task and **none is accepted**: **CHG-016**, **CHG-017**, **CHG-018**, **CHG-019**, **CHG-020**, **CHG-021**. Re-review owed.
+**Status:** **In review** — built 2026-08-16, blocked at a second review the same day, remediated, **blocked again at a third review**, and those four findings and two observations fixed (see *What the third review found* below). Nine change entries are now open against this task and **none is accepted**: **CHG-016**, **CHG-017**, **CHG-018**, **CHG-019**, **CHG-020**, **CHG-021**, **CHG-022**, **CHG-023**, **CHG-024**. Re-review owed.
 **Assigned to:** AI agent
 
 ---
@@ -157,6 +157,28 @@ mutation-checked: the behaviour broken, the named tests seen red, the break reve
 **Nothing here weakened a test.** UTEST-012's refusal cases were *strengthened* in passing: they
 matched bare `IntegrityError`, and adding `seq not null` made every one of them raise for the
 wrong reason — they now match `CHECK constraint failed`.
+
+## What the third review found, and what was changed
+
+**The full gate was green and three of four directed checks still failed** — 264 tests over
+three runs, six fitness functions, ten evals and fourteen browser cases, all passing while a
+second crew could be sent to one neighbourhood. The reviewer neither wrote nor fixed this task.
+Its four checks are in `review-log.md`. Every fix below was mutation-checked: the behaviour
+broken, the whole suite run, the named tests seen red, the break reverted, `git status --short`
+empty after each one.
+
+| Finding | Fix | Made red by |
+|---|---|---|
+| **Block — done criterion 3 was not met.** `unique (scenario_id, location_key)` refuses a **byte-identical** key; the casefold-and-collapse that *defines* "the same location" lived only in `store/dispatch.py`. A direct insert of `Northgate` beside a stored `northgate` was accepted, and so was `north  gate`. The suite's whole reach was one test, and it files both reports **through the endpoint**. | **CHG-023**: migration 009 rebuilds `repair_jobs` with a check that the stored key is **already normalised** — lower case, trimmed, no double space, no tab or newline. The only key the table will hold is the one `location_key()` produces, so the unique constraint has no second spelling left to miss. `collate nocase` was the review's named remedy and is **declined with its reasons** — it is unreachable beside the check, and unsound alone. | Six new ITEST-003 cases, one per spelling, each issuing the insert **directly against the database**; plus the silent case beside them — two genuinely different neighbourhoods are still two jobs. Removing the check turns eight tests red. |
+| **The durable order was asserted only inside one process lifetime.** `AGENT.md`'s second lessons row, unapplied to the state this task created. The reviewer's mutation — a counter held beside the connection — left all 264 tests green while a restart made the first damage report anyone filed a `500`. | Nothing in the store changed: `seq` was already taken from the table inside the insert. What was missing was the assertion. `test_ADR-002_sequence_survives_restart.py` builds a second application over the same database file, with `conftest.build_application`, written for TASK-001's review and never used for this state. | Three cases: a report can still be filed after the restart; the board's order spans it and the numbers keep climbing; and `decision_records` — the half that carries regulatory evidence — does the same. The reviewer's mutation now fails two of them, and the same mutation in `store/decisions.py` fails the third. |
+| **A damage report belonging to no repair job was on no screen and in no figure.** `board_body` grouped by `repair_job_id` and emitted one item **per job**, so a null link fell into a bucket nothing read; `open_reports_in_area` was an **inner** join and missed it too. Two open reports in one neighbourhood logged `open_reports_in_area=1`. | **CHG-022**, implemented: the board response carries `unattached_reports`, both counts include them, the area figure left-joins and falls back to the report's own neighbourhood, and `DispatchBoard` renders the group. The empty state now means *nothing on the board*, not *no job on it*. | Three ITEST-003 cases including the one that has no job at all, so the counts must carry the report; two UTEST-012 cases with three different numbers — 3 open in the storm, 2 in the area, 1 of them attached — and the silent case, an unattached report in a **different** neighbourhood that must not be counted here. |
+| **One clause of the CON-003 location check was exercised by nothing.** `length(trim(…)) between 1 and 120` — no empty neighbourhood, no whitespace-only one, no over-length one, at the store or at the endpoint. The bound was three hard-coded copies with nothing tying them together. | **CHG-023(b)**: four new refusal cases at the store, the boundary asserted from the permitted side, the endpoint's `400`-not-`500` asserted at exactly one over — and `test_one_bound_governs_a_neighbourhoods_length`, which reads the bound out of `sqlite_master` and requires both schema copies to equal `NEIGHBOURHOOD_MAX`. Writing them found a real hole: `trim()` strips **spaces only**, so `"\t\n"` was a storable location while `"   "` was not. Migration 009 closes it. | The review's own mutation — relax the schema to `100000` **and** raise the constant to `5000` — now fails three tests. The other half of it, schema at 120 with the constant at 5000, fails three more, including the `400` that had become a `500`. |
+| Observation — migration 008 changed `damage_reports.asset_id` from `on delete set null` to `on delete cascade`, contradicting §4 the day anything deletes a single asset. | **CHG-024**, proposed: the cascade is kept, and the three alternatives are recorded with why each is worse or unavailable (SQLite cannot null a composite child key by halves; `no action` can break §7.2's scenario delete on an undefined cascade order; reverting the composite key reinstates the CHG-019 Block). What is owed is a decision about §4's sentence, which is about an **unmatched** report rather than a deleted asset. | — (no code change; the entry is the record) |
+| Observation — `STEST-001`'s `DATA_ROUTES` never listed `POST /api/v1/scenarios/{id}/damage-reports`, so done criterion 9's first half rested on the generic unknown-path case. | The row is added, **and the drift is closed rather than patched**: a new test reads the published OpenAPI paths and requires every endpoint the application exposes to be either in `DATA_ROUTES` or in a short, reasoned `PUBLIC` list. A future endpoint that nobody guards is now red. | Removing the row turns the new test red, naming the endpoint. |
+
+**Nothing here weakened a test.** Two were strengthened in passing: `DATA_ROUTES` gained a
+coverage guard it never had, and UTEST-012's parametrised refusal list gained the four shapes
+that reach the clause nothing reached.
 
 ## Tests to run or create
 

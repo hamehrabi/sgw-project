@@ -54,8 +54,13 @@ async def file_damage_report(
     if scenarios.find(connection, scenario_id) is None:
         return errors.error(404, "not_found", "That storm could not be found.")
 
+    # The legible 400 in front of the store's own bound, and it has to agree with it. The store
+    # refuses an empty, whitespace-only or over-length neighbourhood by check constraint on both
+    # `damage_reports.location` and `repair_jobs.location_key` (CHG-017, CHG-023); if this test
+    # and those constraints disagree the caller gets a `500 internal_error` where the contract
+    # specifies a `400 validation_error`, which is how the mismatch was found.
     neighbourhood = dispatch.normalise(body.neighbourhood)
-    if not neighbourhood or len(neighbourhood) > dispatch.NEIGHBOURHOOD_MAX:
+    if not neighbourhood or dispatch.too_long(body.neighbourhood):
         return errors.error(
             400,
             "validation_error",

@@ -41,14 +41,20 @@ reader can still find. Two live examples are in *Known spec drift* below.
 **TASK-001 is Done** — accepted at review, with the author-is-reviewer conflict recorded in
 `review-log.md` rather than hidden (Q-026).
 
-**TASK-005 is back In review.** Five of ten tasks are built — sign-in, upload/parse/joined view,
-the ranked risk list, the append-only decision record, and the dispatch board — but the fifth
-was **blocked at a second review** and its eight findings were fixed on 2026-08-16
-(`TASK-005.md`, *What the second review found*). It is not Done until somebody who did not fix
-it says so. **TASK-006 (re-rank on a forecast change) is next.**
+**TASK-005 is back In review, for the third time.** Five of ten tasks are built — sign-in,
+upload/parse/joined view, the ranked risk list, the append-only decision record, and the
+dispatch board — but the fifth was **blocked at a second review and blocked again at a third**,
+and each round's findings were fixed on 2026-08-16 (`TASK-005.md`, *What the third review
+found*). It is not Done until somebody who did not fix it says so. **TASK-006 (re-rank on a
+forecast change) is next, and must not be started on the assumption that TASK-005 is accepted.**
+
+**Three reviews of one task have each found something the previous one did not, and every one
+of them was found by a directed mutation rather than by the gate.** 264 tests, six fitness
+functions, ten evals and fourteen browser cases were all green while a second crew could be sent
+to one neighbourhood. Treat a green gate as the start of a review, not the end of one.
 
 **The gate is five commands, and the test suite is only one of them:**
-`pytest` (264) · `ruff` · `ci/fitness.py` (6 of 7 wired) · `ci/evals.py` (the quality floor) ·
+`pytest` (294) · `ruff` · `ci/fitness.py` (6 of 7 wired) · `ci/evals.py` (the quality floor) ·
 `playwright` (14, real Chromium against both processes).
 
 **Run the suite more than once before calling the gate green.** Five of fifteen clean runs were
@@ -72,13 +78,24 @@ REQ-NF-007's "aggregated in every log and export" holds by construction, because
 is stored to leak. **Two reports at one location are one repair job**, enforced by
 `unique (scenario_id, location_key)` on `repair_jobs`, not by the code that looks first.
 
-**Six change entries are `proposed` and await a human decision** — the first that were not
+**And which two spellings are one location is also the schema's, not the code's** (CHG-023,
+migration 009). A `unique` over a derived key only enforces identity across the spellings that
+key can hold, so `repair_jobs` refuses a `location_key` that is not already lower-cased,
+trimmed and singly-spaced — `Northgate` and `north  gate` bounce at the database, not at
+`store/dispatch.py`. **One length bound**, 120, lives in both schema checks and in
+`dispatch.NEIGHBOURHOOD_MAX`, and UTEST-012 reads it out of `sqlite_master` so the copies cannot
+drift; when they do, the specified `400 validation_error` silently becomes a `500`.
+
+**Nine change entries are `proposed` and await a human decision** — the first that were not
 self-accepted: **CHG-016** (no endpoint created a damage report, so AC-007 could not occur),
 **CHG-017** (`repair_jobs.location_key`, and the resolution of `damage_reports.location`),
 **CHG-018** (a monotonic `seq` — a timestamp is not a total order), **CHG-019** (composite
 foreign keys, so a report cannot name another storm's asset), **CHG-020** (a job's neighbourhood
-survives the dismissal of the report it came from) and **CHG-021** (`damage_reports.status =
-'duplicate'` given a reader). All are built; none is accepted.
+survives the dismissal of the report it came from), **CHG-021** (`damage_reports.status =
+'duplicate'` given a reader), **CHG-022** (a damage report belonging to no repair job is on the
+board and in the area figure), **CHG-023** (normalisation and the single bound, above) and
+**CHG-024** (a report whose asset is deleted — the cascade kept, the alternatives recorded).
+All are built except CHG-024, which is a record rather than a change; none is accepted.
 
 Seven change entries have been raised from implementation, all accepted: **CHG-008** (a
 `sessions` table), **CHG-009** (`GET /api/v1/auth/session`), **CHG-010** (FF-002 was a gate
@@ -192,7 +209,7 @@ python -m venv .venv
 cd frontend && npm install
 
 # the gate — the suite is NOT the gate on its own
-.venv/Scripts/python.exe -m pytest                       # 105 tests
+.venv/Scripts/python.exe -m pytest                       # 294 tests, 1 skipped
 .venv/Scripts/python.exe -m ruff check backend spec/03-tests/05-executable ci
 .venv/Scripts/python.exe ci/fitness.py                   # FF-001, FF-002, FF-006
 cd frontend && npx tsc --noEmit && npm run lint && npm run build

@@ -191,7 +191,15 @@ export interface RepairJob {
 export interface Board {
   scenario_id: string
   items: RepairJob[]
+  /**
+   * Reports that belong to no repair job. `repair_job_id` is optional in the schema and a
+   * report belongs "to at most one repair job", so the state exists — and a board that groups
+   * only by job leaves those reports on no screen at all (CHG-022). A report nobody can find is
+   * the radio call AC-007's second half exists to keep.
+   */
+  unattached_reports: DamageReport[]
   job_count: number
+  /** Every report still on the working list, attached to a job or not. */
   report_count: number
   dismissed_report_count: number
 }

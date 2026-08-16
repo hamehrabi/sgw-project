@@ -116,6 +116,18 @@ def test_the_same_place_written_differently_is_still_one_place(client, applicati
     ).fetchone()[0] == 1
 
 
+def insert_job_directly(connection, scenario_id, location_key, job_id="RJ-duplicate"):
+    """Straight at the schema, past `file_report`'s find-first lookup. Done criterion 3 is a
+    claim about the store and can only be settled here."""
+    connection.execute(
+        "insert into repair_jobs"
+        " (id, scenario_id, status, location_key, created_at, updated_at, seq)"
+        " values (?, ?, 'pending', ?, '2026-08-16T00:00:00Z', '2026-08-16T00:00:00Z',"
+        " (select coalesce(max(seq), 0) + 1 from repair_jobs))",
+        (job_id, scenario_id, location_key),
+    )
+
+
 def test_the_database_refuses_a_second_job_for_one_location(client, application, accounts):
     """ADR-002: the constraint lives in the schema, so a service that forgot to look first
     cannot create the second job either."""
@@ -126,14 +138,70 @@ def test_the_database_refuses_a_second_job_for_one_location(client, application,
     ).fetchone()
 
     with pytest.raises(sqlite3.IntegrityError):
-        application.state.db.execute(
-            "insert into repair_jobs"
-            " (id, scenario_id, status, location_key, created_at, updated_at)"
-            " values ('RJ-duplicate', ?, 'pending', ?, '2026-08-16T00:00:00Z',"
-            " '2026-08-16T00:00:00Z')",
-            (scenario_id, existing["location_key"]),
-        )
+        insert_job_directly(application.state.db, scenario_id, existing["location_key"])
     application.state.db.rollback()
+
+
+@pytest.mark.parametrize(
+    "spelling",
+    [
+        "Northgate",  # a capital letter is not a second location
+        "NORTHGATE",
+        "northgate ",  # nor is a trailing space
+        " northgate",
+        "north  gate",  # nor a second space between two words
+        "north\tgate",  # nor a tab, which `str.split()` collapses and `trim()` does not
+    ],
+)
+def test_the_database_refuses_the_same_location_spelled_differently(
+    client, application, accounts, spelling
+):
+    """**The finding this task was blocked on, twice over.**
+
+    Done criterion 3 says *"a second job for the same location, inserted **directly against the
+    database**, is refused by the store — not by the service layer."* Until migration 009 it was
+    not. `unique (scenario_id, location_key)` refused a **byte-identical** key and nothing else,
+    while the casefold-and-collapse that *defines* the same location lived entirely in
+    `store/dispatch.py:location_key()`. Beside a stored `northgate` the store accepted
+    `Northgate`, and it accepted `north  gate`, and the board rendered `job_count: 2` for one
+    neighbourhood — two crews at one place during a storm, which is the single failure AC-007
+    exists to prevent.
+
+    The reach of the old suite was exactly one test: deleting `.casefold()` turned
+    `test_the_same_place_written_differently_is_still_one_place` red, and that test files both
+    reports **through the endpoint**. This one issues the insert the endpoint cannot reach.
+    """
+    scenario_id = loaded_storm(client, accounts)
+    report(client, scenario_id, "north gate")
+
+    with pytest.raises(sqlite3.IntegrityError):
+        insert_job_directly(application.state.db, scenario_id, spelling)
+    application.state.db.rollback()
+
+    assert application.state.db.execute(
+        "select count(*) from repair_jobs where scenario_id = ?", (scenario_id,)
+    ).fetchone()[0] == 1, "one neighbourhood, one job, whatever anyone writes at the database"
+
+
+def test_the_database_still_accepts_a_second_job_for_a_different_location(
+    client, application, accounts
+):
+    """The silent case beside the six refusals above: a constraint that refused every direct
+    insert would satisfy all of them and make the board impossible to build.
+
+    It also pins what "different" means. `north gate` and `northgate` are two neighbourhoods,
+    not one spelled two ways — the rule collapses runs of whitespace, it does not delete them.
+    """
+    scenario_id = loaded_storm(client, accounts)
+    report(client, scenario_id, "north gate")
+
+    insert_job_directly(application.state.db, scenario_id, "northgate", job_id="RJ-elsewhere")
+    insert_job_directly(application.state.db, scenario_id, "harbour west", job_id="RJ-harbour")
+    application.state.db.commit()
+
+    assert application.state.db.execute(
+        "select count(*) from repair_jobs where scenario_id = ?", (scenario_id,)
+    ).fetchone()[0] == 3
 
 
 def test_a_report_belongs_to_at_most_one_job_by_construction(application):
@@ -367,6 +435,78 @@ def test_a_duplicate_report_stays_on_the_board_and_says_so(client, application, 
     assert job["report_count"] == 2, "both calls are still on the board"
     assert [entry["status"] for entry in job["reports"]] == ["open", "duplicate"]
     assert job["dismissed_report_count"] == 0
+
+
+def test_a_report_belonging_to_no_job_is_still_on_the_board(client, application, accounts):
+    """**CHG-022.** `database-design.md` §3 makes `repair_job_id` optional and §1 says a report
+    belongs *"to **at most** one repair job"*, so this state exists in the schema today.
+
+    `board_body` grouped reports by that column and then emitted one item **per job**, so a
+    report with no job landed in a bucket keyed `None` that nothing read: two open reports in
+    one storm came back as `report_count: 1`, and the second was on no screen at all. All 264
+    tests passed with that row in the table. *A report nobody can find is the radio call
+    AC-007's second half exists to keep*, and an empty screen must never read as safety.
+
+    Reachable only by a direct insert today — which is exactly what was said about the
+    storm-scope hole one review earlier, and TASK-008 is the next task to write to this table.
+    """
+    scenario_id = loaded_storm(client, accounts)
+    attached = report(client, scenario_id, "Northgate").json()
+    insert_report_directly(
+        application.state.db, scenario_id=scenario_id, report_id="DR-no-job"
+    )
+    application.state.db.commit()
+
+    board = client.get(f"/api/v1/scenarios/{scenario_id}/jobs").json()
+
+    assert board["report_count"] == 2, "two open reports in this storm, and both are work"
+    assert [entry["report_id"] for entry in board["unattached_reports"]] == ["DR-no-job"]
+    assert board["job_count"] == 1
+    assert [entry["report_id"] for entry in board["items"][0]["reports"]] == [
+        attached["report_id"]
+    ]
+
+
+def test_a_board_holding_only_unattached_reports_is_not_an_empty_board(
+    client, application, accounts
+):
+    """The silent case. With a job beside it, the assertion above passes against an
+    implementation that returns the unattached list and leaves it out of the counts — and it
+    passes against a screen that renders *no damage reported* over the top of it.
+
+    Here there is no job at all, so the board's own counts have to carry the report.
+    """
+    scenario_id = loaded_storm(client, accounts)
+    insert_report_directly(
+        application.state.db, scenario_id=scenario_id, report_id="DR-only-one"
+    )
+    application.state.db.commit()
+
+    board = client.get(f"/api/v1/scenarios/{scenario_id}/jobs").json()
+
+    assert board["job_count"] == 0
+    assert board["items"] == []
+    assert board["report_count"] == 1, "nothing here reads as nothing reported"
+    assert [entry["report_id"] for entry in board["unattached_reports"]] == ["DR-only-one"]
+
+
+def test_a_dismissed_report_with_no_job_leaves_the_working_list_and_is_counted(
+    client, application, accounts
+):
+    """The unattached group splits the way a job's reports do: dismissal hides a report from
+    the working list and is explained rather than merely gone."""
+    scenario_id = loaded_storm(client, accounts)
+    insert_report_directly(
+        application.state.db, scenario_id=scenario_id, report_id="DR-no-job-dismissed"
+    )
+    application.state.db.commit()
+    dismiss_directly(application.state.db, "DR-no-job-dismissed", accounts["admin"]["id"])
+
+    board = client.get(f"/api/v1/scenarios/{scenario_id}/jobs").json()
+
+    assert board["unattached_reports"] == []
+    assert board["report_count"] == 0
+    assert board["dismissed_report_count"] == 1
 
 
 def test_filing_a_report_writes_nothing_to_the_decision_record(client, application, accounts):

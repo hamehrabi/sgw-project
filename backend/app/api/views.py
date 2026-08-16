@@ -184,20 +184,38 @@ def board_body(scenario_id: str, jobs, reports) -> dict:
     here rather than in SQL, so the board stays at two statements however many reports exist
     (PTEST-002) and a job's location survives the dismissal of the report it came from.
 
+    **A report that belongs to no repair job is on the board too** (CHG-022). `repair_job_id` is
+    optional in `database-design.md` §3 and §1 says a report belongs *"to **at most** one repair
+    job"* — so the state exists, and this function used to group by that column and then emit
+    one item **per job**, which left every unattached report in a bucket keyed `None` that
+    nothing read. A report nobody can find is the radio call AC-007's second half exists to
+    keep, and *an empty screen must never read as safety*. They come back in their own group,
+    counted with the rest.
+
     The empty state is an empty list with its counts stated — `no damage reported`, which the
     screen must never render as `all clear`.
     """
-    grouped: dict[str, list[dict]] = {}
+    grouped: dict[str | None, list[dict]] = {}
     for row in reports:
         grouped.setdefault(row["repair_job_id"], []).append(damage_report_item(row))
 
     items = [repair_job_item(job, grouped.get(job["id"], [])) for job in jobs]
+
+    # The `None` bucket, read rather than dropped. Split the same way a job's reports are, so a
+    # dismissed unattached report is explained rather than merely gone.
+    filed_without_a_job = grouped.get(None, [])
+    unattached = [report for report in filed_without_a_job if report["status"] != DISMISSED]
+    unattached_dismissed = len(filed_without_a_job) - len(unattached)
+
     return {
         "scenario_id": scenario_id,
         "items": items,
+        "unattached_reports": unattached,
         "job_count": len(jobs),
-        "report_count": sum(item["report_count"] for item in items),
-        "dismissed_report_count": sum(item["dismissed_report_count"] for item in items),
+        "report_count": sum(item["report_count"] for item in items) + len(unattached),
+        "dismissed_report_count": (
+            sum(item["dismissed_report_count"] for item in items) + unattached_dismissed
+        ),
     }
 
 
