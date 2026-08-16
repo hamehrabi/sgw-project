@@ -17,7 +17,70 @@
 
 | 2026-08-16 | TASK-005 output — migration 007 (`repair_jobs`, `damage_reports`), `store/dispatch.py`, the report and board endpoints, `DispatchBoard`, four executable tests | TASK-005 / REQ-F-007, REQ-NF-007, AC-007 | The developer (**also the author** — same Q-026 conflict, fifth time) | Requirement fit · Architecture fit · Security & validation · Test evidence · Change scope | **One of the four tests written for this task could not fail, and the mutation check is what found it.** Two specification gaps raised and left **proposed** rather than self-accepted: **CHG-016** (no endpoint creates a damage report) and **CHG-017** (`repair_jobs.location_key` + the resolution of `damage_reports.location`). | **Accept with follow-up** | CHG-016 and CHG-017 need a human decision; TASK-008 writes the dismissal against columns 007 already carries |
 
+| 2026-08-16 | TASK-005 output, **reviewed a second time against its own done criteria** — migration 007, `store/dispatch.py`, `api/dispatch.py`, `views.repair_job_item` / `board_body`, `DispatchBoard`, and the four executable tests | TASK-005 / REQ-F-007, REQ-NF-007, AC-007, ADR-002, CON-003 | A later agent run, which **did not write TASK-005** — but author and reviewer are still the same process (**Q-026**, see the note below) | Requirement fit · Architecture fit · Security & validation · Performance · Test evidence · Change scope | **The gate is not green.** Two tests fail intermittently on an unmodified tree — **5 of 15 clean `pytest` runs were red** — from a single root cause that reaches `decision_records` as well as the board. **Three of four directed checks failed**, each confirmed by a mutation the suite did not notice: REQ-NF-007's *aggregate for that neighbourhood* is unasserted in **both** directions; the storm-scope of a report's `asset_id` lives only in service code, which is this log's pre-declared **Block** condition; and a repair job's location has nowhere to live once its only report is dismissed. No finding requires a specification decision, so **no change entry is raised** — CHG-016 and CHG-017 remain the only two proposed. | **Block** | Fix the ordering tiebreak first — it is `decision_records`' order as much as the board's; then move the scope rule into the schema; the third finding is evidence bearing on the still-open **CHG-017** |
+
 **Decision values:** Accept · Accept with follow-up · Revise · Reject · Block
+
+### The second review of TASK-005 — four checks, three of them failed
+
+**The four checks were chosen before the code was read**, from the failure shapes `AGENT.md`
+already records, and deliberately **not** the four in the task file. Each was settled by a
+mutation: break the behaviour, run the tests that claim to cover it, revert. Every mutation in
+this section was reverted and `git status --short` is empty.
+
+**Before any of the four, the gate itself failed.** The first `pytest -q` run on the untouched
+tree passed; the second did not. Fifteen clean full-suite runs produced **five red ones**, and
+two different tests were responsible:
+
+- `ATEST-007::test_both_reports_are_visible_and_linked_to_one_job` — *"in the order they were
+  called in — the queue is the history"*
+- `ITEST-002::test_an_admin_may_read_the_decision_record` — *"ordered by when they happened"*,
+  `assert ['change', 'recommendation'] == ['recommendation', 'change']`
+
+**One root cause, and it is not TASK-005's alone.** Every chronological read in the store is
+`order by <timestamp>, id`. `datetime.now(UTC).isoformat()` resolves to about 15.6 ms on this
+platform — **1,999 of 2,000 consecutive calls returned an identical string** — and the tiebreak
+`id` is a random UUID hex. Two rows written inside one tick come back in coin-flip order. That
+is TASK-005's board (`reported_at`) and TASK-004's `decision_records` (`occurred_at`), whose
+`read_all` docstring says *"the order **is** the history, not a view of it."* It is not, and it
+has not been since migration 006 shipped. `latest_recommendation` picks with
+`order by occurred_at desc limit 1` and can therefore return the wrong row outright.
+
+| Check | Result |
+|---|---|
+| **The figure the log carries is an aggregate *for that neighbourhood*** (done criterion 5) | **Failed — the assertion cannot fail.** Two mutations of `open_reports_in_area`, each left green by all 249 tests: counting **every** open report in the storm (coarser than a neighbourhood), and counting reports **per asset** (finer than one — the thing REQ-NF-007 exists to forbid). Cause: every UTEST-012 case files into exactly one neighbourhood with no asset, so the right figure and both wrong ones are the same number. `AGENT.md`'s first lessons row in a new coat — a fixture where correct and incorrect agree. |
+| **The board's performance claims can be made red** | **Held**, with one dead sub-assertion. A query per job turns the statement-count test red; dropping `damage_reports_scenario_status_job` turns the query-plan test red with `SCAN damage_reports`. But the `repair_jobs` half of that same assertion **cannot** fail: dropping `repair_jobs_scenario_status` leaves `sqlite_autoindex_repair_jobs_2`, created by `unique (scenario_id, location_key)`, serving the query, so the plan still reads `SEARCH … USING INDEX`. Also `statements_during` compares two counts with no positive guard — `0 == 0` would pass — though it captures 8 statements today, so it is real for now. |
+| **A rule enforced in service code that the store could refuse** | **Failed, and this is the Block.** `api/dispatch.py`'s `find_asset` lookup is the *only* thing stopping a damage report in storm A from naming storm B's asset. Disabling it leaves 248 tests green and nothing red. Issued directly against the database, the store accepts both a cross-storm `asset_id` and a cross-storm `repair_job_id`; only a non-existent `scenario_id` is refused. `assets.id` is the whole foreign key, so membership of the storm is never checked. The store could refuse it — a unique index on `assets (scenario_id, id)` and a composite foreign key — and this is the failure the log predicted in advance and pre-committed to blocking on. **In fairness to the author:** migration 005 gave `risk_scores.asset_id` the same shape, so the pattern is repo-wide; TASK-005 is only where it first becomes reachable from **caller-supplied input**, which is what makes it live. |
+| **A described state with nowhere in the schema to live** | **Failed.** Dismiss a job's only report — TASK-008's state, whose columns migration 007 already carries, and which the schema permits today — and the board returns that job as `location: {"neighbourhood": null}`, `report_count: 0`: a repair job on a shared dispatcher's board with no location and nothing behind it. The only stored form is `repair_jobs.location_key`, casefolded to `saltmarsh`, and CHG-017 explicitly **declined** a display column on the ground that *"the board derives a job's neighbourhood from its first report"*. That derivation has a hole, and the mutation shows exactly how far the tests reach: forcing every job's location to `null` turns ITEST-003's two-locations test red, so the **happy** path is asserted and the dismissed one is not. |
+
+**Two smaller observations, neither a finding.** `DispatchBoard` has no Playwright spec — done
+criterion 7 ("two reports render under one job; the empty state reads *no damage reported*")
+is satisfied by reading the source and by nothing executable; the two e2e files cover
+ATEST-004 and E2E-002 only. And `damage_reports.status` permits `'duplicate'`, which nothing
+writes and the board's `status <> 'dismissed'` filter lets straight through.
+
+**What held.** The rest of the task's own claims survived re-checking: both halves of AC-007,
+the `unique (scenario_id, location_key)` refusal issued directly against the database, the
+seven refused location shapes, the endpoint's `extra="forbid"`, and the rewritten
+`no_endpoint_returns_reasons_on_their_own` — which is now genuinely red under the mutation that
+first exposed it. `ruff`, `ci/fitness.py` (6 of 7), `ci/evals.py`, `tsc`, `lint`, `build` and
+all 9 Playwright specs pass.
+
+### Author and reviewer are the same process, for the sixth time — and a second agent is not a second person
+
+**Q-026, and it has to be said plainly here because this row is the one most likely to be read
+as independent review.** This review was run by a later agent invocation that did not write
+TASK-005 and had not seen its code — which is why three checks failed where the author's five
+held. That is worth something. It is **not** independence: it is the same model, under the same
+account, following instructions from the same person, with no human between the work and its
+acceptance. No real people exist for this prototype; one person holds every decision-owner
+role, recorded as a deferral rather than resolved with invented names. **A different invocation
+of the same process is not a second pair of eyes, and this signature must not be read as one.**
+
+What it does demonstrate, and the reason to keep doing it: **a reviewer who did not write the
+code found three failures in output that had already been mutation-checked 26 times by its
+author.** The author's checks were good and none of them were wrong — they were chosen by
+somebody who already knew where the code was careful.
 
 ### TASK-005's checks — the fifth review, and the first to find a test that proved nothing
 
