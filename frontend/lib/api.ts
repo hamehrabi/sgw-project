@@ -297,6 +297,8 @@ export interface DamageReport {
   /** CHG-050: what this call accounts for. Null is "the caller did not say" — not zero. */
   customers_out: number | null
   asset_is_critical: boolean
+  /** The name a dispatcher recognises (CHG-064) — null when no asset id matched. */
+  asset_name: string | null
 }
 
 export interface RepairJob {

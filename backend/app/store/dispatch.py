@@ -54,7 +54,8 @@ JOBS_SQL = "select * from repair_jobs where scenario_id = ? order by seq"
 # can be derived without a third statement. A left join: a report naming no asset is
 # still a report (§4), and it is simply not critical-by-asset.
 REPORTS_SQL = (
-    "select r.*, coalesce(a.is_critical_facility, 0) as asset_is_critical"
+    "select r.*, coalesce(a.is_critical_facility, 0) as asset_is_critical,"
+    " a.name as asset_name"
     " from damage_reports r"
     " left join assets a on a.id = r.asset_id and a.scenario_id = r.scenario_id"
     " where r.scenario_id = ? order by r.seq"
@@ -452,3 +453,62 @@ def recent_job_actions(connection, scenario_id, limit) -> list[sqlite3.Row]:
         " order by da.seq desc limit ?",
         (scenario_id, limit),
     ).fetchall()
+
+
+def seed_reports_from_outages(
+    connection, *, scenario_id, outages, area_names, asset_id_by_code, reported_by
+):
+    """CHG-064: the dataset's outage rows become the board's starting worklist.
+
+    Runs INSIDE the caller's open load transaction — a storm must not exist half-seeded,
+    and `save_loaded_scenario`'s rollback covers this exactly as it covers the assets.
+    Each row becomes one damage report, attached to its asset where the id matches and
+    grouped by the same rule a filed report obeys: one job per location (AC-007).
+
+    The location is the row's county (the client dialect names one), else the area's own
+    name, else its id — a place a dispatcher recognises, never anything finer than the
+    record already holds (CON-003). Defect 5's verdict is honoured at this boundary: an
+    impossible customer figure was flagged at parse and enters no sum here.
+    """
+    now = _now()
+    job_ids: dict[str, str] = {}
+    for outage in outages:
+        place = (
+            outage.county
+            or (area_names or {}).get(outage.service_area_id or "")
+            or outage.service_area_id
+            or "Unrecorded area"
+        )
+        display = normalise(place)[:NEIGHBOURHOOD_MAX]
+        key = location_key(display)
+
+        job_id = job_ids.get(key)
+        if job_id is None:
+            job_id = f"RJ-{uuid.uuid4().hex[:12]}"
+            connection.execute(
+                "insert into repair_jobs"
+                " (id, scenario_id, status, location_key, created_at, updated_at, seq)"
+                " values (?, ?, 'pending', ?, ?, ?,"
+                " (select coalesce(max(seq), 0) + 1 from repair_jobs))",
+                (job_id, scenario_id, key, now, now),
+            )
+            job_ids[key] = job_id
+
+        connection.execute(
+            "insert into damage_reports"
+            " (id, scenario_id, asset_id, repair_job_id, location, reported_at,"
+            " reported_by, status, customers_out, seq)"
+            " values (?, ?, ?, ?, ?, ?, ?, ?, ?,"
+            " (select coalesce(max(seq), 0) + 1 from damage_reports))",
+            (
+                f"DR-{uuid.uuid4().hex[:12]}",
+                scenario_id,
+                asset_id_by_code.get(outage.asset_external_id or ""),
+                job_id,
+                json.dumps({"neighbourhood": display}),
+                outage.failure_time or now,
+                reported_by,
+                OPEN,
+                None if outage.impossible else outage.customers_out,
+            ),
+        )

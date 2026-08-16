@@ -87,16 +87,19 @@ test('the summary blocks approval of a figure the platform does not hold', async
   await expect(sheet).toBeVisible()
   await expect(page.getByTestId('verification-table')).toBeVisible()
 
+  // The draft as generated — the template passes the verifier by construction, so it
+  // is the honest text whatever the board holds (CHG-064 seeds it from the dataset).
+  const content = page.getByLabel('Summary content')
+  const drafted = await content.inputValue()
+
   // A figure nobody supplied. The server refuses it and the refusal is on screen.
-  await page.getByLabel('Summary content').fill('An estimated 41,500 customers are without service.')
+  await content.fill('An estimated 41,500 customers are without service.')
   await page.getByTestId('approve-summary').click()
   await expect(sheet).toContainText('Approval is blocked until they match.')
   await expect(card.getByTestId('summary-state')).toHaveText('Draft')
 
   // The honest text goes through — Draft → Approved → Sent in one review.
-  await page
-    .getByLabel('Summary content')
-    .fill('There are 0 open incidents on the board. 0 involve critical facilities.')
+  await content.fill(drafted)
   await page.getByTestId('approve-summary').click()
   await expect(card.getByTestId('summary-state')).toHaveText('Sent')
 })

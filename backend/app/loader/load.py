@@ -321,7 +321,8 @@ def _read_outages(files, service_areas, findings) -> list[LoadedOutage]:
         population = service_areas.get(area) if area else None
 
         # Defect 5 first: an impossible figure is flagged and then not used for anything.
-        if defects.outage_count_is_impossible(out, population):
+        impossible = defects.outage_count_is_impossible(out, population)
+        if impossible:
             findings.append(defects.impossible_count(code, area, out, population))
             percentage = None
         else:
@@ -338,6 +339,10 @@ def _read_outages(files, service_areas, findings) -> list[LoadedOutage]:
                 customers_out=out,
                 service_area_id=area,
                 percentage_out=percentage,
+                # The client dialect names a county per row (CHG-056); the original
+                # format does not, and the area name stands in for it at seeding.
+                county=(row.get("county") or "").strip() or None,
+                impossible=impossible,
             )
         )
     return outages

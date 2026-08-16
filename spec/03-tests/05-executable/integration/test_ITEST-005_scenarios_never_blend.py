@@ -325,9 +325,12 @@ def test_the_board_carries_one_storm_and_not_the_other(client, two_storms):
     board_a = client.get(f"/api/v1/scenarios/{two_storms['a']}/jobs").json()
     board_b = client.get(f"/api/v1/scenarios/{two_storms['b']}/jobs").json()
 
-    assert board_a["job_count"] == 1 and board_b["job_count"] == 1
-    assert [job["location"]["neighbourhood"] for job in board_a["items"]] == ["Northgate"]
-    assert [job["location"]["neighbourhood"] for job in board_b["items"]] == ["Southbank"]
+    # CHG-064: each board also carries its own dataset's seeded outage history, so the
+    # scoping claim is membership and disjointness, never a count of one.
+    places_a = {job["location"]["neighbourhood"] for job in board_a["items"]}
+    places_b = {job["location"]["neighbourhood"] for job in board_b["items"]}
+    assert "Northgate" in places_a and "Northgate" not in places_b
+    assert "Southbank" in places_b and "Southbank" not in places_a
     ids_a = {report["report_id"] for job in board_a["items"] for report in job["reports"]}
     ids_b = {report["report_id"] for job in board_b["items"] for report in job["reports"]}
     assert ids_a and ids_b and not (ids_a & ids_b)

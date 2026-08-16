@@ -18,8 +18,14 @@ good news when blank.
 from conftest import fixture_files, sign_in
 
 
-def dispatcher_with_a_storm(client, accounts):
-    """The dispatcher holds `user`. An admin loads the storm; the dispatcher works it."""
+def dispatcher_with_a_storm(client, application, accounts):
+    """The dispatcher holds `user`. An admin loads the storm; the dispatcher works it.
+
+    CHG-064 seeds the dataset's outage history onto the board at load. This file's
+    subject is what a dispatcher's own reports do, so the seeded rows are removed here
+    at the fixture — the slate a dataset with no outage rows would give. Neither table
+    is append-only; the audit walls belong to decision_records and dispatch_actions.
+    """
     sign_in(client, accounts["admin"]["email"], accounts["admin"]["password"])
     created = client.post(
         "/api/v1/scenarios",
@@ -27,6 +33,13 @@ def dispatcher_with_a_storm(client, accounts):
         files=[("files", (n, c, "text/csv")) for n, c in fixture_files().items()],
     )
     scenario_id = created.json()["scenario_id"]
+    application.state.db.execute(
+        "delete from damage_reports where scenario_id = ?", (scenario_id,)
+    )
+    application.state.db.execute(
+        "delete from repair_jobs where scenario_id = ?", (scenario_id,)
+    )
+    application.state.db.commit()
     client.delete("/api/v1/auth/session")
     sign_in(client, accounts["user"]["email"], accounts["user"]["password"])
     return scenario_id
@@ -43,8 +56,8 @@ def board_of(client, scenario_id):
     return client.get(f"/api/v1/scenarios/{scenario_id}/jobs").json()
 
 
-def test_both_reports_are_visible_and_linked_to_one_job(client, accounts):
-    scenario_id = dispatcher_with_a_storm(client, accounts)
+def test_both_reports_are_visible_and_linked_to_one_job(client, application, accounts):
+    scenario_id = dispatcher_with_a_storm(client, application, accounts)
     first = report(client, scenario_id, "Northgate")
     second = report(client, scenario_id, "Northgate")
 
@@ -63,7 +76,7 @@ FROZEN = "2026-08-16T12:00:00+00:00"
 
 
 def test_the_queue_is_the_history_when_the_clock_cannot_separate_two_calls(
-    client, accounts, monkeypatch
+    client, application, accounts, monkeypatch
 ):
     """*"In the order they were called in — the queue is the history."*
 
@@ -78,7 +91,7 @@ def test_the_queue_is_the_history_when_the_clock_cannot_separate_two_calls(
     """
     from app.store import dispatch
 
-    scenario_id = dispatcher_with_a_storm(client, accounts)
+    scenario_id = dispatcher_with_a_storm(client, application, accounts)
     monkeypatch.setattr(dispatch, "_now", lambda: FROZEN)
 
     called_in = [report(client, scenario_id, "Northgate")["report_id"] for _ in range(12)]
@@ -91,11 +104,13 @@ def test_the_queue_is_the_history_when_the_clock_cannot_separate_two_calls(
     assert [entry["report_id"] for entry in job["reports"]] == called_in
 
 
-def test_two_jobs_created_in_one_tick_hold_their_order_too(client, accounts, monkeypatch):
+def test_two_jobs_created_in_one_tick_hold_their_order_too(
+    client, application, accounts, monkeypatch
+):
     """The same defect on the other board query: `repair_jobs` was `order by created_at, id`."""
     from app.store import dispatch
 
-    scenario_id = dispatcher_with_a_storm(client, accounts)
+    scenario_id = dispatcher_with_a_storm(client, application, accounts)
     monkeypatch.setattr(dispatch, "_now", lambda: FROZEN)
     places = ["Northgate", "Harbour West", "Saltmarsh", "Old Quay", "Fen End", "Milltown"]
 
@@ -108,10 +123,10 @@ def test_two_jobs_created_in_one_tick_hold_their_order_too(client, accounts, mon
     assert [item["location"]["neighbourhood"] for item in board["items"]] == places
 
 
-def test_the_second_report_is_not_silently_dropped(client, accounts):
+def test_the_second_report_is_not_silently_dropped(client, application, accounts):
     """The half a de-duplicating implementation loses. A report nobody can find is a radio
     call nobody can answer."""
-    scenario_id = dispatcher_with_a_storm(client, accounts)
+    scenario_id = dispatcher_with_a_storm(client, application, accounts)
     report(client, scenario_id, "Northgate")
     second = report(client, scenario_id, "Northgate")
 
@@ -123,10 +138,10 @@ def test_the_second_report_is_not_silently_dropped(client, accounts):
     assert second["status"] == "open", "the duplicate location is not a dismissed report"
 
 
-def test_the_empty_board_is_no_damage_reported_rather_than_an_error(client, accounts):
+def test_the_empty_board_is_no_damage_reported_rather_than_an_error(client, application, accounts):
     """It must render as an empty list, not a 404 and not a failure — and the count is
     stated, so "nothing reported" is a fact rather than a silence."""
-    scenario_id = dispatcher_with_a_storm(client, accounts)
+    scenario_id = dispatcher_with_a_storm(client, application, accounts)
 
     board = board_of(client, scenario_id)
 
@@ -135,10 +150,10 @@ def test_the_empty_board_is_no_damage_reported_rather_than_an_error(client, acco
     assert board["report_count"] == 0
 
 
-def test_a_job_carries_no_rank_score_or_band(client, accounts):
+def test_a_job_carries_no_rank_score_or_band(client, application, accounts):
     """Criticality badges the dispatch queue; risk orders the planning list. They are
     different lists, and folding one into the other is how a rank starts moving crews."""
-    scenario_id = dispatcher_with_a_storm(client, accounts)
+    scenario_id = dispatcher_with_a_storm(client, application, accounts)
     report(client, scenario_id, "Northgate")
 
     job = board_of(client, scenario_id)["items"][0]
@@ -147,9 +162,9 @@ def test_a_job_carries_no_rank_score_or_band(client, accounts):
     assert job["priority_rank"] is None
 
 
-def test_opening_the_board_dispatches_nothing(client, accounts):
+def test_opening_the_board_dispatches_nothing(client, application, accounts):
     """BR-001, BR-005. A job is a note that work exists, never an instruction that it starts."""
-    scenario_id = dispatcher_with_a_storm(client, accounts)
+    scenario_id = dispatcher_with_a_storm(client, application, accounts)
     report(client, scenario_id, "Northgate")
 
     job = board_of(client, scenario_id)["items"][0]
@@ -158,9 +173,9 @@ def test_opening_the_board_dispatches_nothing(client, accounts):
     assert job["status"] == "pending", "created as work to be decided on, never as work started"
 
 
-def test_a_report_may_name_an_asset_and_may_not(client, accounts):
+def test_a_report_may_name_an_asset_and_may_not(client, application, accounts):
     """§4: a report with no matching asset is still a report. The board must hold both."""
-    scenario_id = dispatcher_with_a_storm(client, accounts)
+    scenario_id = dispatcher_with_a_storm(client, application, accounts)
     asset_id = client.get(f"/api/v1/scenarios/{scenario_id}/assets").json()["items"][0]["asset_id"]
 
     named = report(client, scenario_id, "Northgate", asset_id=asset_id)

@@ -89,7 +89,12 @@ class ForecastRevision:
 
 @dataclass
 class LoadedOutage:
-    """A historical outage row. Replay only — it feeds nothing at run time."""
+    """One outage row from the dataset.
+
+    Replay evidence for the defect rules — and, since CHG-064, the board's starting
+    worklist: each row becomes a stored damage report at load, grouped into repair
+    jobs by area exactly as a filed report would be (AC-007).
+    """
 
     asset_external_id: str | None
     failure_time: str
@@ -97,6 +102,12 @@ class LoadedOutage:
     customers_out: int | None
     service_area_id: str | None
     percentage_out: float | None = None
+    # The client dialect's area name (CHG-056). Preferred as the report's location —
+    # a county reads as a place; a service-area id reads as a database.
+    county: str | None = None
+    # Defect 5's verdict, carried so the boundary can honour "flagged and then not
+    # used for anything": an impossible figure never enters the board's sums.
+    impossible: bool = False
     source_file: str = "outages.csv"
 
 

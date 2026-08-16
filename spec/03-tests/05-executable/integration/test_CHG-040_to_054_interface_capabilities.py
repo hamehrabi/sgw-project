@@ -311,9 +311,17 @@ def test_the_repair_queue_orders_critical_facilities_first(client, application, 
     assert second.status_code == 201
 
     board = client.get(f"/api/v1/scenarios/{loaded}/jobs").json()
-    assert board["items"][0]["priority"] == "High"
-    assert board["items"][0]["location"]["neighbourhood"] == "Hospital Row"
-    assert board["items"][1]["priority"] == "Low"
+    # CHG-064 seeds the dataset's own jobs around these two, so the claim is the ORDER
+    # PROPERTY, not a fixed position: every High job precedes every non-High job, and
+    # the critical facility outranks the older ordinary report.
+    by_place = {item["location"]["neighbourhood"]: item for item in board["items"]}
+    assert by_place["Hospital Row"]["priority"] == "High"
+    rank_of = {"High": 0, "Medium": 1, "Low": 2}
+    order = [rank_of[item["priority"]] for item in board["items"]]
+    assert order == sorted(order), "impact order holds across the whole queue"
+    places = [item["location"]["neighbourhood"] for item in board["items"]]
+    assert places.index("Hospital Row") < places.index("Ordinary Corner")
+    assert by_place["Ordinary Corner"]["priority"] == "Low"
     # The frozen vocabulary: never "Critical", never "Standard".
     assert {item["priority"] for item in board["items"]} <= {"High", "Medium", "Low"}
 

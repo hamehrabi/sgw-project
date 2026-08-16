@@ -11,6 +11,7 @@ import uuid
 from datetime import UTC, datetime
 
 from app.store import blanks, forecasts, matches, staging
+from app.store import dispatch as dispatch_store
 from app.store import findings as findings_store
 
 # The two bounds `scenarios_identity_shape` holds, in the one place the service layer reads them.
@@ -215,6 +216,18 @@ def save_loaded_scenario(
                 for candidate in result.match_candidates
                 if candidate["anchor_code"] in by_code
             ],
+        )
+        # CHG-064: the dataset's outage rows become the board's starting worklist —
+        # in this same transaction, and only here. An identical re-upload resolves to
+        # the existing scenario before this function is ever called, so nothing seeds
+        # twice; new content is a new storm with its own board.
+        dispatch_store.seed_reports_from_outages(
+            connection,
+            scenario_id=scenario_id,
+            outages=result.outages,
+            area_names=result.service_area_names,
+            asset_id_by_code=by_code,
+            reported_by=loaded_by,
         )
         connection.execute(
             "update scenario_uploads set status = 'ready', scenario_id = ?, finished_at = ?"

@@ -65,6 +65,22 @@ function jobAt(page: Page, neighbourhood: string) {
 }
 
 test('the empty board reads "no damage reported" and never "all clear"', async ({ page }) => {
+  // CHG-064: a loaded storm carries its dataset's outage history, so this fixture's
+  // board is never empty on arrival. The empty state is still a real state — a dataset
+  // whose outages.csv has no rows — and its rendering is proven by serving exactly the
+  // answer such a dataset produces, the same way TASK-009 reaches its empty switcher.
+  await page.route('**/api/v1/scenarios/*/jobs', (route) =>
+    route.fulfill({
+      json: {
+        scenario_id: 'SC-outage-free',
+        items: [],
+        unattached_reports: [],
+        job_count: 0,
+        report_count: 0,
+        dismissed_report_count: 0,
+      },
+    }),
+  )
   await loadedStorm(page)
 
   const empty = page.getByTestId('board-empty')

@@ -61,7 +61,11 @@ function ReportLine({ report, onDismissed }: { report: DamageReport; onDismissed
       <td />
       <td colSpan={6} className="px-3 py-1.5 text-[12px] text-muted">
         <span className="font-mono text-[11px]">{report.reported_at.slice(0, 16)}</span>
-        {report.asset_id ? ` · asset ${report.asset_id}` : ' · no asset named'}
+        {report.asset_name
+          ? ` · ${report.asset_name}`
+          : report.asset_id
+            ? ` · asset ${report.asset_id}`
+            : ' · no asset named'}
         {report.customers_out !== null &&
           ` · ~${report.customers_out.toLocaleString()} customers`}
         {report.asset_is_critical && (
@@ -371,10 +375,11 @@ export function DispatchBoard({
               </div>
             </div>
             <p className="text-[12px] text-muted" data-testid="board-summary">
-              One row per repair job from filed damage reports, worst first — a critical
-              facility, then customers accounted for, never a risk score. Row 1 is the next
-              job to hand out. {board.report_count} report(s) across {board.job_count} job(s);
-              two reports at one location are one job.
+              One row per repair job — from the dataset&rsquo;s outage records and filed
+              reports, worst first: a critical facility, then customers accounted for,
+              never a risk score. Row 1 is the next job to hand out. {board.report_count}{' '}
+              report(s) across {board.job_count} job(s); two reports at one location are
+              one job.
             </p>
             <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="Filter">
               <span className="mr-1 font-mono text-[10px] uppercase tracking-wider text-muted">

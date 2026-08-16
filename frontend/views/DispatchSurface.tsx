@@ -106,7 +106,7 @@ export function DispatchSurface({ scenarioId }: { scenarioId: string }) {
               <StatCard
                 label="Open incidents"
                 value={String(openJobs.length)}
-                caption="from filed damage reports"
+                caption="from uploaded outage records and filed reports"
               />
               <StatCard
                 label="Critical facilities"

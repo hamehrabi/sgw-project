@@ -21,7 +21,7 @@ import pytest
 from conftest import fixture_files, sign_in
 
 
-def loaded_storm(client, accounts, as_admin=True):
+def loaded_storm(client, application, accounts, as_admin=True):
     sign_in(client, accounts["admin"]["email"], accounts["admin"]["password"])
     created = client.post(
         "/api/v1/scenarios",
@@ -29,6 +29,18 @@ def loaded_storm(client, accounts, as_admin=True):
         files=[("files", (n, c, "text/csv")) for n, c in fixture_files().items()],
     )
     scenario_id = created.json()["scenario_id"]
+    # CHG-064 seeds the dataset's outage history onto the board at load. This file's
+    # subject is what FILING does, and its arithmetic needs the slate a dataset with no
+    # outage rows would give — so the seeded rows are removed here, at the fixture.
+    # Neither table is append-only; the audit walls belong to decision_records and
+    # dispatch_actions, not to the working list.
+    application.state.db.execute(
+        "delete from damage_reports where scenario_id = ?", (scenario_id,)
+    )
+    application.state.db.execute(
+        "delete from repair_jobs where scenario_id = ?", (scenario_id,)
+    )
+    application.state.db.commit()
     if not as_admin:
         client.delete("/api/v1/auth/session")
         sign_in(client, accounts["user"]["email"], accounts["user"]["password"])
@@ -43,7 +55,7 @@ def report(client, scenario_id, neighbourhood, **extra):
 
 
 def test_two_reports_for_one_location_produce_one_job(client, application, accounts):
-    scenario_id = loaded_storm(client, accounts)
+    scenario_id = loaded_storm(client, application, accounts)
 
     first = report(client, scenario_id, "Northgate")
     second = report(client, scenario_id, "Northgate")
@@ -59,7 +71,7 @@ def test_two_reports_for_one_location_produce_one_job(client, application, accou
 
 def test_both_reports_carry_the_same_repair_job_id(client, application, accounts):
     """The side effect `integration-tests.md` names, read from the rows rather than the body."""
-    scenario_id = loaded_storm(client, accounts)
+    scenario_id = loaded_storm(client, application, accounts)
     report(client, scenario_id, "Northgate")
     report(client, scenario_id, "Northgate")
 
@@ -72,8 +84,8 @@ def test_both_reports_carry_the_same_repair_job_id(client, application, accounts
     assert rows[0]["repair_job_id"] is not None
 
 
-def test_the_board_returns_200_and_shows_both_under_one_job(client, accounts):
-    scenario_id = loaded_storm(client, accounts)
+def test_the_board_returns_200_and_shows_both_under_one_job(client, application, accounts):
+    scenario_id = loaded_storm(client, application, accounts)
     first = report(client, scenario_id, "Northgate").json()
     second = report(client, scenario_id, "Northgate").json()
 
@@ -88,7 +100,7 @@ def test_the_board_returns_200_and_shows_both_under_one_job(client, accounts):
 
 def test_two_locations_produce_two_jobs(client, application, accounts):
     """The silent case. Without it, "always one job" passes every assertion above."""
-    scenario_id = loaded_storm(client, accounts)
+    scenario_id = loaded_storm(client, application, accounts)
 
     report(client, scenario_id, "Northgate")
     report(client, scenario_id, "Harbour West")
@@ -106,7 +118,7 @@ def test_two_locations_produce_two_jobs(client, application, accounts):
 
 def test_the_same_place_written_differently_is_still_one_place(client, application, accounts):
     """A capital letter is not a second location, and two crews is what that costs."""
-    scenario_id = loaded_storm(client, accounts)
+    scenario_id = loaded_storm(client, application, accounts)
 
     report(client, scenario_id, "Northgate")
     report(client, scenario_id, "  northgate ")
@@ -131,7 +143,7 @@ def insert_job_directly(connection, scenario_id, location_key, job_id="RJ-duplic
 def test_the_database_refuses_a_second_job_for_one_location(client, application, accounts):
     """ADR-002: the constraint lives in the schema, so a service that forgot to look first
     cannot create the second job either."""
-    scenario_id = loaded_storm(client, accounts)
+    scenario_id = loaded_storm(client, application, accounts)
     report(client, scenario_id, "Northgate")
     existing = application.state.db.execute(
         "select * from repair_jobs where scenario_id = ?", (scenario_id,)
@@ -171,7 +183,7 @@ def test_the_database_refuses_the_same_location_spelled_differently(
     `test_the_same_place_written_differently_is_still_one_place` red, and that test files both
     reports **through the endpoint**. This one issues the insert the endpoint cannot reach.
     """
-    scenario_id = loaded_storm(client, accounts)
+    scenario_id = loaded_storm(client, application, accounts)
     report(client, scenario_id, "north gate")
 
     with pytest.raises(sqlite3.IntegrityError):
@@ -192,7 +204,7 @@ def test_the_database_still_accepts_a_second_job_for_a_different_location(
     It also pins what "different" means. `north gate` and `northgate` are two neighbourhoods,
     not one spelled two ways — the rule collapses runs of whitespace, it does not delete them.
     """
-    scenario_id = loaded_storm(client, accounts)
+    scenario_id = loaded_storm(client, application, accounts)
     report(client, scenario_id, "north gate")
 
     insert_job_directly(application.state.db, scenario_id, "northgate", job_id="RJ-elsewhere")
@@ -230,7 +242,7 @@ def test_a_report_belongs_to_at_most_one_job_by_construction(application):
 
 def test_two_storms_never_share_a_job(client, application, accounts):
     """The scoping bug that would look entirely plausible: one neighbourhood, two storms."""
-    first_storm = loaded_storm(client, accounts)
+    first_storm = loaded_storm(client, application, accounts)
     second_storm = f"SC-{'b' * 12}"
     application.state.db.execute(
         # `content_key` and `seq` are required by migration 013: a storm is identified by
@@ -294,7 +306,7 @@ def test_the_database_refuses_a_report_naming_an_asset_from_another_storm(
     "Two storms blended into one ranking would look entirely plausible" (CLAUDE.md), and a
     crew sent to an asset that is not in this storm is that sentence with a van attached.
     """
-    first_storm = loaded_storm(client, accounts)
+    first_storm = loaded_storm(client, application, accounts)
     elsewhere = client.get(f"/api/v1/scenarios/{first_storm}/assets").json()["items"][0]
     second_storm = a_second_storm(application, accounts)
 
@@ -310,7 +322,7 @@ def test_the_database_refuses_a_report_hung_off_another_storms_repair_job(
 ):
     """The same hole through the other foreign key: a report in storm B attached to storm A's
     job would put a neighbourhood from one storm on the other storm's board."""
-    first_storm = loaded_storm(client, accounts)
+    first_storm = loaded_storm(client, application, accounts)
     report(client, first_storm, "Northgate")
     elsewhere = application.state.db.execute(
         "select id from repair_jobs where scenario_id = ?", (first_storm,)
@@ -329,7 +341,7 @@ def test_the_database_accepts_a_report_naming_an_asset_from_its_own_storm(
 ):
     """The permitted case, so the two refusals above are refusing something rather than
     everything — and so an unattributable report is not caught in the same net."""
-    scenario_id = loaded_storm(client, accounts)
+    scenario_id = loaded_storm(client, application, accounts)
     here = client.get(f"/api/v1/scenarios/{scenario_id}/assets").json()["items"][0]["asset_id"]
 
     insert_report_directly(application.state.db, scenario_id=scenario_id, asset_id=here)
@@ -353,7 +365,7 @@ def test_the_database_accepts_a_report_naming_an_asset_from_its_own_storm(
 def test_the_endpoint_still_refuses_a_cross_storm_asset_legibly(client, application, accounts):
     """The store is the enforcement; this is the readable 400 in front of it. Both, because a
     caller deserves a sentence and the rule deserves a constraint."""
-    first_storm = loaded_storm(client, accounts)
+    first_storm = loaded_storm(client, application, accounts)
     elsewhere = client.get(f"/api/v1/scenarios/{first_storm}/assets").json()["items"][0]
     second_storm = a_second_storm(application, accounts)
 
@@ -389,7 +401,7 @@ def test_a_job_whose_only_report_is_dismissed_keeps_its_location(
     first report"; the derivation now reads the first report *filed*, which is what that
     sentence says (CHG-020).
     """
-    scenario_id = loaded_storm(client, accounts)
+    scenario_id = loaded_storm(client, application, accounts)
     filed = report(client, scenario_id, "Saltmarsh").json()
 
     dismiss_directly(application.state.db, filed["report_id"], accounts["admin"]["id"])
@@ -409,7 +421,7 @@ def test_a_dismissed_report_does_not_take_its_neighbours_location_with_it(
     location, `location` is right whichever report it is read from — so that test would pass
     against an implementation that only ever reads the *last* report. Here the dismissed one
     is first and the open one is somewhere else entirely."""
-    scenario_id = loaded_storm(client, accounts)
+    scenario_id = loaded_storm(client, application, accounts)
     first = report(client, scenario_id, "Saltmarsh").json()
     report(client, scenario_id, "Harbour West")
 
@@ -430,7 +442,7 @@ def test_a_duplicate_report_stays_on_the_board_and_says_so(client, application, 
     open work. It stays visible — losing a radio call is the failure AC-007's second half
     exists to prevent — and it carries its status, so the screen can badge it (CHG-021).
     """
-    scenario_id = loaded_storm(client, accounts)
+    scenario_id = loaded_storm(client, application, accounts)
     report(client, scenario_id, "Northgate")
     repeat = report(client, scenario_id, "Northgate").json()
     application.state.db.execute(
@@ -458,7 +470,7 @@ def test_a_report_belonging_to_no_job_is_still_on_the_board(client, application,
     Reachable only by a direct insert today — which is exactly what was said about the
     storm-scope hole one review earlier, and TASK-008 is the next task to write to this table.
     """
-    scenario_id = loaded_storm(client, accounts)
+    scenario_id = loaded_storm(client, application, accounts)
     attached = report(client, scenario_id, "Northgate").json()
     insert_report_directly(
         application.state.db, scenario_id=scenario_id, report_id="DR-no-job"
@@ -484,7 +496,7 @@ def test_a_board_holding_only_unattached_reports_is_not_an_empty_board(
 
     Here there is no job at all, so the board's own counts have to carry the report.
     """
-    scenario_id = loaded_storm(client, accounts)
+    scenario_id = loaded_storm(client, application, accounts)
     insert_report_directly(
         application.state.db, scenario_id=scenario_id, report_id="DR-only-one"
     )
@@ -503,7 +515,7 @@ def test_a_dismissed_report_with_no_job_leaves_the_working_list_and_is_counted(
 ):
     """The unattached group splits the way a job's reports do: dismissal hides a report from
     the working list and is explained rather than merely gone."""
-    scenario_id = loaded_storm(client, accounts)
+    scenario_id = loaded_storm(client, application, accounts)
     insert_report_directly(
         application.state.db, scenario_id=scenario_id, report_id="DR-no-job-dismissed"
     )
@@ -520,7 +532,7 @@ def test_a_dismissed_report_with_no_job_leaves_the_working_list_and_is_counted(
 def test_filing_a_report_writes_nothing_to_the_decision_record(client, application, accounts):
     """`decision_records.kind` has no value for a damage report, and that is deliberate: the
     audit table holds decisions about recommendations (CHG-015's reasoning, reused)."""
-    scenario_id = loaded_storm(client, accounts)
+    scenario_id = loaded_storm(client, application, accounts)
     before = application.state.db.execute("select count(*) from decision_records").fetchone()[0]
 
     report(client, scenario_id, "Northgate")
@@ -529,15 +541,15 @@ def test_filing_a_report_writes_nothing_to_the_decision_record(client, applicati
     assert after == before
 
 
-def test_filing_a_report_is_not_privileged(client, accounts):
+def test_filing_a_report_is_not_privileged(client, application, accounts):
     """The dispatcher holds the `user` role. The board is their screen, not an admin's."""
-    scenario_id = loaded_storm(client, accounts, as_admin=False)
+    scenario_id = loaded_storm(client, application, accounts, as_admin=False)
 
     assert report(client, scenario_id, "Northgate").status_code == 201
     assert client.get(f"/api/v1/scenarios/{scenario_id}/jobs").status_code == 200
 
 
-def test_an_unknown_storm_is_404_rather_than_a_new_board(client, accounts):
+def test_an_unknown_storm_is_404_rather_than_a_new_board(client, application, accounts):
     """**The refusal is named, not merely counted.**
 
     This read `status_code == 404` and nothing else. `AGENT.md`'s row about `POST /placements` is
@@ -547,7 +559,7 @@ def test_an_unknown_storm_is_404_rather_than_a_new_board(client, accounts):
     `404`, so the old assertion did go red — but it went red for the crash, not for the rule, and
     the next refusal added to this endpoint would make it unfailable without anybody touching it.
     """
-    loaded_storm(client, accounts)
+    loaded_storm(client, application, accounts)
 
     refused = report(client, "SC-nothing-here", "Northgate")
     assert refused.status_code == 404, refused.text

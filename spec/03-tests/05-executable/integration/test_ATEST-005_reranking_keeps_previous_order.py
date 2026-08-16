@@ -617,12 +617,19 @@ def test_applying_a_forecast_change_records_no_decision_and_moves_no_crew(
     ranking(client, storm)
     before = connection.execute("select count(*) from decision_records").fetchone()[0]
     assert before == 1
+    # CHG-064: the board starts seeded from the dataset's outage rows. The claim here is
+    # that APPLYING A FORECAST creates none of any of it — counts unchanged, not zero.
+    jobs_before = connection.execute("select count(*) from repair_jobs").fetchone()[0]
+    reports_before = connection.execute("select count(*) from damage_reports").fetchone()[0]
 
     assert apply_next(client, storm).status_code == 201
 
     assert connection.execute("select count(*) from decision_records").fetchone()[0] == before
-    assert connection.execute("select count(*) from repair_jobs").fetchone()[0] == 0
-    assert connection.execute("select count(*) from damage_reports").fetchone()[0] == 0
+    assert connection.execute("select count(*) from repair_jobs").fetchone()[0] == jobs_before
+    assert (
+        connection.execute("select count(*) from damage_reports").fetchone()[0]
+        == reports_before
+    )
 
 
 # --- The durable half -----------------------------------------------------------------------

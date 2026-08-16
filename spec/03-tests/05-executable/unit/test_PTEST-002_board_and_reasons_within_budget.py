@@ -222,11 +222,13 @@ def test_the_board_read_does_not_grow_slower_than_its_input(demo_scale):
     """Wall-clock on 200 reports, loose enough to survive a shared machine and tight enough
     to catch work that is quadratic in the report count."""
     application, client, scenario_id = demo_scale
+    # CHG-064: the storm arrives with its dataset's outage history already on the board.
+    baseline = client.get(f"/api/v1/scenarios/{scenario_id}/jobs").json()["report_count"]
     seed_reports(application, scenario_id, 200)
 
     started = time.perf_counter()
     board = client.get(f"/api/v1/scenarios/{scenario_id}/jobs")
     elapsed = time.perf_counter() - started
 
-    assert board.json()["report_count"] == 200
+    assert board.json()["report_count"] == baseline + 200
     assert elapsed < PAGE_LOAD_BUDGET_SECONDS, f"the board alone took {elapsed:.2f}s"

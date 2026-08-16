@@ -189,6 +189,8 @@ def damage_report_item(row) -> dict:
         "asset_is_critical": bool(
             row["asset_is_critical"] if "asset_is_critical" in row.keys() else 0  # noqa: SIM118
         ),
+        # The name a dispatcher recognises (CHG-064) — never a coordinate (STEST-009).
+        "asset_name": row["asset_name"] if "asset_name" in row.keys() else None,  # noqa: SIM118
     }
 
 
