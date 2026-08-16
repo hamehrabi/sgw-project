@@ -101,6 +101,23 @@ revision being rewritten: `unique (scenario_id, asset_id, forecast_revision)` re
 row and says nothing about an `UPDATE` to the first, so AC-005's *"the previous order remains
 retrievable"* rested on no code happening to issue one).
 
+**TASK-006 was reviewed on 2026-08-16 by a run that did not write it, and the decision was
+Block.** The gate was green — 323 tests over **four** clean runs, `ruff`, six fitness functions,
+ten evals, `tsc`, `lint`, `build` and 14 Playwright specs — and **three of four directed checks
+failed**, each confirmed by a mutation the gate did not notice. Criterion 11's restart test
+asserts the pointer and the two stored orders and **nothing about the forecast values**: with the
+cells non-durable, a restarted application re-ranks the whole storm to `ranked: 0, unscored: 5`
+and all 25 cases stay green. CHG-025's *"numbered from 0 in chronological order"* is asserted by
+nothing — the fixture's forecast times are already in file order, so numbering by file order
+passes all 323, and on a file that is not pre-sorted the storm is walked **backwards** through
+its own forecasts. Criterion 12 is covered by nothing executable — no browser case was added,
+deleting the whole revision list leaves the frontend gate green, and in a real browser
+`ForecastRevisionControl` offers revisions that have no ranking, which puts the entire screen
+into an error state it never leaves. The store/service check **held**, with two invariants named
+as observations. No finding needs a specification decision, so **no change entry is raised** and
+the eleven proposed entries stand unchanged. All four checks and their mutations are in
+`review-log.md`.
+
 **The ordering defect was never TASK-005's alone**, which is why this row matters to TASK-004 as
 well: `decision_records` has been intermittently mis-ordered since migration 006, and
 `latest_recommendation` could return the wrong recommendation outright. That is fixed by the
