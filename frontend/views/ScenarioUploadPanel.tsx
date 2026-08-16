@@ -18,6 +18,7 @@
 import { useState } from 'react'
 
 import { RequestFailed, scenarios } from '@/lib/api'
+import { isBlank, trimBlank } from '@/lib/blank'
 
 type State =
   | { stage: 'idle' }
@@ -54,7 +55,9 @@ export function ScenarioUploadPanel({
   if (role !== 'admin') return null
 
   async function send(files: FileList | File[]) {
-    if (!name.trim()) {
+    // `isBlank`, never `String.prototype.trim()`. A storm named U+00A0 was stored and the
+    // switcher drew a row with no visible label (CHG-039).
+    if (isBlank(name)) {
       setState({ stage: 'error', message: 'Name this storm before loading it.' })
       return
     }
@@ -63,7 +66,11 @@ export function ScenarioUploadPanel({
       // The request returns once parsing has finished; the intermediate stage is shown
       // because the parse is the slow half and the one that can fail.
       setState({ stage: 'parsing' })
-      const created = await scenarios.load(name, sourceNote.trim() || UNSTATED_SOURCE, files)
+      const created = await scenarios.load(
+        trimBlank(name),
+        trimBlank(sourceNote) || UNSTATED_SOURCE,
+        files,
+      )
       setState({ stage: 'success', scenarioId: created.scenario_id })
       onLoaded(created.scenario_id)
     } catch (error) {

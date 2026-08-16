@@ -32,6 +32,7 @@
 import { useState } from 'react'
 
 import { PlacementRecorded, Ranking, RequestFailed, placements } from '@/lib/api'
+import { isBlank, trimBlank } from '@/lib/blank'
 
 type State =
   | { stage: 'idle' }
@@ -72,7 +73,9 @@ export function PlacementForm({
     event.preventDefault()
     // The `validating` state: said here rather than after a round trip, so a mistake costs no
     // time during a storm. The server refuses the same things and the store refuses them again.
-    if (!crew.trim()) {
+    // `isBlank`, never `String.prototype.trim()`. The two disagree about U+200B, and the
+    // disagreement was answered `201` and written into `decision_records` (CHG-039).
+    if (isBlank(crew)) {
       setState({ stage: 'error', message: 'Name the crew before recording where it waits.' })
       return
     }
@@ -87,10 +90,10 @@ export function PlacementForm({
     try {
       const placement = await placements.record(
         scenarioId,
-        crew.trim(),
+        trimBlank(crew),
         chosen,
         ranking.forecast_revision,
-        note.trim() || null,
+        trimBlank(note) || null,
       )
       setRecorded((current) => [placement, ...current])
       setState({ stage: 'idle' })

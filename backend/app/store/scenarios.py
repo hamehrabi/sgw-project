@@ -10,7 +10,7 @@ import sqlite3
 import uuid
 from datetime import UTC, datetime
 
-from app.store import forecasts
+from app.store import blanks, forecasts
 
 # The two bounds `scenarios_identity_shape` holds, in the one place the service layer reads them.
 # **Two hard-coded copies of one number are tied together by nothing**, and when they drift the
@@ -23,8 +23,17 @@ SOURCE_NOTE_MAX = 500
 
 # Enumerated rather than left to `str.strip()`'s default so the service and the store agree about
 # what "blank" means. SQLite's one-argument `trim()` strips spaces only, so the trigger names the
-# same six characters (CHG-023).
-_WHITESPACE = " \t\n\r\v\f"
+# same characters (CHG-023).
+#
+# **The six ASCII ones were not enough and this is the fourth column to prove it** (CHG-039).
+# `" \t\n\r\v\f"` stood here beside the identical six in `scenarios_identity_shape`, so the two
+# layers agreed perfectly and were both wrong the same way: a storm named U+00A0 was answered
+# `201` on an untouched tree and stored, and the switcher a person picks storms out by rendered a
+# row with no visible label. `ScenarioUploadPanel` used `String.prototype.trim()`, which is wider
+# than both — the browser strictest again, so the hole was invisible from the only screen that
+# shows it. One alphabet now, in `store/blanks.py`, in the schema as `char(...)`, and in
+# `frontend/lib/blank.ts`.
+_WHITESPACE = blanks.WHITESPACE
 
 
 def storm_text(value, limit: int) -> str | None:

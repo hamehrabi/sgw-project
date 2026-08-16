@@ -29,7 +29,7 @@ import re
 import sqlite3
 
 import pytest
-from app.store import scenarios
+from app.store import blanks, scenarios
 from conftest import USER_PASSWORD, build_application, fixture_files, sign_in
 from fastapi.testclient import TestClient
 
@@ -38,7 +38,15 @@ from fastapi.testclient import TestClient
 KEY_A = "a" * 64
 KEY_B = "b" * 64
 
-WHITESPACE = (" ", "\t", "\n", "\r", "\v", "\f")
+# **Widened from the six ASCII characters to the shared alphabet** (CHG-039). It held
+# `(" ", "\t", "\n", "\r", "\v", "\f")`, which is exactly the six the trigger and
+# `store/scenarios.py` both enumerated — so the two layers agreed perfectly, were both wrong the
+# same way, and this parametrisation could not tell. On an untouched tree
+# `POST /api/v1/scenarios` with a name of one U+00A0 was answered **201** and stored, and
+# `ScenarioSwitcher` — whose whole purpose under REQ-F-010 is letting a person pick one storm
+# out of several — drew a row with no visible label. Reading the alphabet out of the store
+# rather than restating it is the point: a seventh copy of this list is the defect again.
+WHITESPACE = tuple(blanks.WHITESPACE)
 
 AT_THE_NAME_LIMIT = "N" * scenarios.NAME_MAX
 OVER_THE_NAME_LIMIT = "N" * (scenarios.NAME_MAX + 1)
@@ -471,3 +479,117 @@ def test_the_list_its_notes_and_its_order_survive_a_restart(tmp_path, monkeypatc
         "Second in",
         "First in",
     ]
+
+
+# --------------------------------------------------------------------------------------------
+# CHG-039 — the alphabet reaches this table too, and both halves were live without a mutation.
+# --------------------------------------------------------------------------------------------
+
+# The characters the six-ASCII list above could not see. Two of them are the ones no language
+# strips for you: U+200B is in neither Python's `White_Space` nor JavaScript's `trim()`, and
+# U+FEFF is in JavaScript's and not in Python's.
+INVISIBLES = [
+    " ",  # no-break space — this one was a live 201 and a stored storm name
+    " ",  # em space
+    "​",  # zero width space
+    "﻿",  # zero width no-break space
+    "　",  # ideographic space
+]
+INVISIBLE_IDS = [f"U+{ord(character):04X}" for character in INVISIBLES]
+
+
+@pytest.mark.parametrize("blank", INVISIBLES, ids=INVISIBLE_IDS)
+def test_the_endpoint_refuses_a_storm_named_in_no_visible_character(signed_in, application, blank):
+    """**Live on an untouched tree, with no mutation at all** (CHG-039).
+
+    `POST /api/v1/scenarios` with `name` set to one no-break space was answered **201** and that
+    character is what `scenarios.name` then held. REQ-F-010 is about choosing between several
+    loaded storms and `ScenarioSwitcher` is the screen that does it, so a storm whose label is
+    invisible is a row a person cannot pick and cannot tell apart from the one beside it.
+
+    `'   '` was refused the whole time, which is what made it invisible as a defect as well:
+    the rule looked present and was six characters wide. `ScenarioUploadPanel` used
+    `String.prototype.trim()`, which removes this character — the browser strictest again, so
+    only a caller reaching the API ever met it.
+    """
+    before = application.state.db.execute("select count(*) from scenarios").fetchone()[0]
+
+    refused = load(signed_in, name=blank)
+
+    assert refused.status_code == 400, refused.text
+    assert refused.json()["code"] == "validation_error"
+    assert "name" in refused.json()["message"].lower()
+    assert application.state.db.execute("select count(*) from scenarios").fetchone()[0] == before
+
+
+@pytest.mark.parametrize("blank", INVISIBLES, ids=INVISIBLE_IDS)
+def test_the_endpoint_refuses_a_source_note_of_no_visible_character(
+    signed_in, application, blank
+):
+    """§3's *which prepared dataset this is, and where it came from*, held to the same alphabet.
+
+    The note is what the switcher shows beneath the name, so an invisible one is a row that
+    claims to say where a storm came from and says nothing — and `api/scenarios.py` cannot fall
+    back to `UNSTATED_SOURCE`, because the caller did supply a value.
+    """
+    before = application.state.db.execute("select count(*) from scenarios").fetchone()[0]
+
+    refused = load(signed_in, source_note=blank)
+
+    assert refused.status_code == 400, refused.text
+    assert refused.json()["code"] == "validation_error"
+    assert "source" in refused.json()["message"].lower()
+    assert application.state.db.execute("select count(*) from scenarios").fetchone()[0] == before
+
+
+@pytest.mark.parametrize("blank", INVISIBLES, ids=INVISIBLE_IDS)
+def test_a_storm_whose_name_merely_contains_one_is_loaded_and_trimmed(
+    signed_in, application, blank
+):
+    """The permitted case, and what stops the two groups above proving too much.
+
+    A rule that refused every name containing an unusual space would be wrong — a storm named in
+    Japanese uses U+3000 between its words. What is refused is a name made of nothing. The ends
+    are trimmed with the shared alphabet and what a person typed in the middle is theirs.
+    """
+    created = load(signed_in, name=f"{blank}Helene replay{blank}")
+
+    assert created.status_code == 201, created.text
+    stored = application.state.db.execute(
+        "select name from scenarios where id = ?", (created.json()["scenario_id"],)
+    ).fetchone()
+    assert stored["name"] == "Helene replay"
+
+
+def test_one_alphabet_decides_what_is_blank_for_a_storms_label(client, accounts, application):
+    """The tie, on the trigger this task owns (CHG-039).
+
+    CHG-037 tied three copies of the alphabet together for a dismissal reason and tied nothing
+    to any other column, so this table's two text columns went on being trimmed by the six ASCII
+    characters in `store/scenarios.py` and the identical six in `scenarios_identity_shape`. The
+    two agreed with each other perfectly, which is why nothing was ever red. Move any copy now
+    and this is.
+    """
+    connection = application.state.db
+    triggers = {
+        row["name"]: row["sql"] or ""
+        for row in connection.execute("select name, sql from sqlite_master where type = 'trigger'")
+    }
+
+    # The haystack, before anything is reported about what is in it.
+    assert "scenarios_identity_shape" in triggers, "no identity trigger at all"
+    sql = triggers["scenarios_identity_shape"]
+
+    found = {
+        tuple(int(point) for point in call.replace(" ", "").replace("\n", "").split(","))
+        for call in re.findall(r"char\(([0-9,\s]+)\)", sql)
+    }
+    assert found, "the name and source-note clauses name no whitespace alphabet at all"
+    assert found == {tuple(blanks.BLANK_CODEPOINTS)}, (
+        "the schema and `store/blanks.py` disagree about what is blank; the difference is "
+        "whether a storm can be loaded under a name nobody can see on the switcher"
+    )
+    assert tuple(scenarios._WHITESPACE) == tuple(blanks.WHITESPACE), (
+        "the service layer trims a different alphabet from the one the store refuses, which "
+        "turns the specified 400 into a 500 for every character between them"
+    )

@@ -13,6 +13,8 @@ import sqlite3
 import uuid
 from datetime import UTC, datetime
 
+from app.store import blanks
+
 RECOMMENDATION = "recommendation"
 DECISIONS = ("accept", "change", "reject")
 PLACEMENT = "placement"
@@ -129,11 +131,18 @@ def crew_label(value: str) -> str | None:
 
     CON-003 permits **a display name and a role** and forbids everything else about a person, so
     this is a label: one line, trimmed, bounded.
+
+    **`str.strip()` was the fourth spelling of "blank" in this repository and it let two through**
+    (CHG-039). Python strips `White_Space` and neither U+200B nor U+FEFF is in it, the schema's
+    one-argument `trim()` stripped spaces alone, and the browser's `String.prototype.trim()`
+    strips U+FEFF but not U+200B — so a crew label of one zero-width space was answered `201` on
+    an untouched tree and written into `decision_records`, where BR-004 means it can never be
+    corrected. The alphabet is `store/blanks.py`'s, here and in the trigger.
     """
-    label = value.strip()
+    label = blanks.trim(value)
     if not label or len(label) > CREW_LABEL_MAX:
         return None
-    if any(character in label for character in ("\t", "\n", "\v", "\f", "\r")):
+    if any(character in label for character in blanks.WHITESPACE if character != " "):
         return None
     return label
 

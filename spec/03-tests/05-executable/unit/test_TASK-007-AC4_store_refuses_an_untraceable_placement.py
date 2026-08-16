@@ -25,7 +25,7 @@ import re
 import sqlite3
 
 import pytest
-from app.store import decisions
+from app.store import blanks, decisions
 from conftest import fixture_files, sign_in
 
 FIXTURE = "storm-for-the-planning-flow"
@@ -440,3 +440,162 @@ def test_the_append_only_triggers_still_refuse_a_placement_row(client, accounts,
     assert connection.execute(
         "select count(*) from decision_records where id = 'DR-direct'"
     ).fetchone()[0] == 1
+
+
+# CHG-039. Every one of these was answered `201` by `POST .../placements` on an untouched tree —
+# no mutation needed — and two of them reached `decision_records`, which BR-004 forbids
+# correcting. Each gets its own case for the reason the ASCII group above does: the clause you
+# never ran is the clause whose function you assumed, and three languages mean three sets.
+UNICODE_BLANKS = [
+    " ",  # no-break space — Python strips it, JavaScript strips it, SQLite does not
+    " ",  # em space
+    "​",  # zero width space — NEITHER Python nor JavaScript strips it. This was a 201.
+    "﻿",  # zero width no-break space — JavaScript strips it, Python does not. Also a 201.
+    "　",  # ideographic space
+    "",  # next line
+    " ",  # line separator
+    " ",  # narrow no-break space
+]
+BLANK_IDS = [f"U+{ord(character):04X}" for character in UNICODE_BLANKS]
+
+
+@pytest.mark.parametrize("blank", UNICODE_BLANKS, ids=BLANK_IDS)
+def test_the_store_refuses_a_crew_label_blank_in_any_alphabet(
+    client, accounts, application, blank
+):
+    """**CHG-023's sentence for the fourth time, on the column TASK-007 created** (CHG-039).
+
+    Migration 012 enumerated the same six ASCII characters CHG-037 had already had to widen one
+    table over, and every character here got past them: SQLite's one-argument `trim()` strips
+    spaces alone, and the five-way `replace` chain beside it named char(9) to char(13).
+    """
+    connection = application.state.db
+    scenario_id = load(client, accounts)
+    assets = ranked_assets(connection, scenario_id)
+
+    message = refusal(
+        connection, scenario_id, accounts["user"]["id"], payload(assets[:1], crew=blank)
+    )
+
+    assert "crew display label" in message
+
+
+def test_an_ordinary_crew_label_still_goes_in(client, accounts, application):
+    """The control the group above needs. Sixteen refusals prove nothing about *blankness* if
+    the column is simply shut — this is the plain label, with an ordinary space in it, accepted
+    by the same direct insert."""
+    connection = application.state.db
+    scenario_id = load(client, accounts)
+    assets = ranked_assets(connection, scenario_id)
+
+    insert(connection, scenario_id, accounts["user"]["id"], payload(assets[:1], crew="North crew"))
+
+    stored = connection.execute(
+        "select payload from decision_records where id = 'DR-direct'"
+    ).fetchone()
+    assert json.loads(stored["payload"])["crew"] == "North crew"
+
+
+@pytest.mark.parametrize("blank", UNICODE_BLANKS, ids=BLANK_IDS)
+def test_the_endpoint_refuses_a_crew_label_blank_in_any_alphabet(
+    client, accounts, application, blank
+):
+    """The same hole from the caller's side, where it was live and needed no mutation at all.
+
+    On an untouched tree `POST /api/v1/scenarios/{id}/placements` with a crew of U+200B or
+    U+FEFF was answered **201**, and that single invisible character is what `decision_records`
+    then held — a placement naming a crew nobody can see, under a person's name, in the one
+    table a correction cannot reach. U+00A0, U+2003 and U+3000 were refused, so the failure was
+    not even consistent: Python's `str.strip()` removes `White_Space` and neither invisible is
+    in it.
+
+    It was invisible from the screen because `PlacementForm` used `String.prototype.trim()`,
+    which *does* remove U+FEFF — the strictest of the three definitions sitting in the layer
+    ADR-002 says must never hold the rule.
+    """
+    connection = application.state.db
+    scenario_id = load(client, accounts)
+    assets = ranked_assets(connection, scenario_id)
+    before = connection.execute(
+        "select count(*) from decision_records where kind = 'placement'"
+    ).fetchone()[0]
+
+    refused = client.post(
+        f"/api/v1/scenarios/{scenario_id}/placements",
+        json={"crew": blank, "asset_ids": assets[:1], "forecast_revision": 0, "note": None},
+    )
+
+    assert refused.status_code == 400, refused.text
+    assert refused.json()["code"] == "validation_error"
+    assert "crew" in refused.json()["message"].lower()
+    assert (
+        connection.execute(
+            "select count(*) from decision_records where kind = 'placement'"
+        ).fetchone()[0]
+        == before
+    ), "a refused placement still wrote a row into the table BR-004 forbids correcting"
+
+
+@pytest.mark.parametrize("blank", UNICODE_BLANKS, ids=BLANK_IDS)
+def test_the_endpoint_keeps_a_crew_label_that_merely_contains_one(
+    client, accounts, application, blank
+):
+    """The permitted case, and what stops the group above proving too much.
+
+    A rule that refused every label containing an unusual character would satisfy all sixteen
+    assertions above and would be wrong: CON-003 permits a display name, and a display name may
+    be written in a language whose spaces are not U+0020. What is refused is a label made of
+    nothing. The ends are trimmed with the shared alphabet and the rest is stored.
+    """
+    scenario_id = load(client, accounts)
+    assets = ranked_assets(application.state.db, scenario_id)
+
+    recorded = client.post(
+        f"/api/v1/scenarios/{scenario_id}/placements",
+        json={
+            "crew": f"{blank}North crew{blank}",
+            "asset_ids": assets[:1],
+            "forecast_revision": 0,
+            "note": None,
+        },
+    )
+
+    assert recorded.status_code == 201, recorded.text
+    stored = application.state.db.execute(
+        "select payload from decision_records where kind = 'placement'"
+        " order by occurred_at desc limit 1"
+    ).fetchone()
+    assert json.loads(stored["payload"])["crew"] == "North crew"
+
+
+def test_one_alphabet_decides_what_is_blank_for_a_crew_label(client, accounts, application):
+    """The tie, on the trigger this task owns (CHG-039).
+
+    CHG-037 tied the schema, `store/dispatch.py` and the browser together for a dismissal
+    reason and tied nothing to any other column, so the next column written reached for its own
+    language's idea of blank. That is `AGENT.md`'s standing observation — a rule which has to be
+    re-derived at each boundary will be missed at one — and this is what fails when a copy moves.
+    """
+    connection = application.state.db
+    load(client, accounts)
+    triggers = {
+        row["name"]: row["sql"] or ""
+        for row in connection.execute("select name, sql from sqlite_master where type = 'trigger'")
+    }
+
+    # The haystack, before anything is reported about what is in it.
+    assert "decision_records_placement_shape" in triggers, "no placement trigger at all"
+    sql = triggers["decision_records_placement_shape"]
+
+    found = {
+        tuple(int(point) for point in call.replace(" ", "").replace("\n", "").split(","))
+        for call in re.findall(r"char\(([0-9,\s]+)\)", sql)
+    }
+    assert found, "the crew clause names no whitespace alphabet at all"
+
+    full = tuple(blanks.BLANK_CODEPOINTS)
+    without_the_space = tuple(point for point in full if point != 0x20)
+    assert found == {full, without_the_space}, (
+        "the crew label's alphabet and the store's disagree; the difference is which invisible "
+        "characters a placement may be recorded under, in a table BR-004 forbids correcting"
+    )

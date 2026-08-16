@@ -341,7 +341,13 @@ def test_the_endpoint_refuses_a_reason_that_is_blank_in_any_alphabet(
 
 
 CHAR_CALL = re.compile(r"char\(([0-9,\s]+)\)")
-BLANK_LIST = re.compile(r"DISMISSAL_BLANK_CODEPOINTS\s*=\s*\[(.*?)\]", re.DOTALL)
+# Widened from `DISMISSAL_BLANK_CODEPOINTS` to the suffix alone (CHG-039). The alphabet was
+# never a fact about dismissals — two other fields kept `String.prototype.trim()` because the
+# shared definition was filed under a name that did not look like theirs — and it now lives in
+# `lib/blank.ts` as `BLANK_CODEPOINTS`. **This is a wider haystack, not a narrower assertion:**
+# the pattern still matches the old spelling, so a file that re-introduces one is still counted,
+# and `len(listed) == 1` below is still what refuses a second home.
+BLANK_LIST = re.compile(r"BLANK_CODEPOINTS\s*=\s*\[(.*?)\]", re.DOTALL)
 FRONTEND_BOUND = re.compile(r"DISMISSAL_REASON_MAX\s*=\s*(\d+)")
 
 

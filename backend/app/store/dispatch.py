@@ -34,7 +34,7 @@ import sqlite3
 import uuid
 from datetime import UTC, datetime
 
-from app.store import decisions
+from app.store import blanks, decisions
 
 # Every read scoped by `scenario_id`. Two storms blended into one board would look entirely
 # plausible and send a crew to a neighbourhood that is not in this storm at all.
@@ -101,25 +101,17 @@ DISMISSAL_REASON_MAX = 2000
 # for — U+200B ZERO WIDTH SPACE and U+FEFF ZERO WIDTH NO-BREAK SPACE.
 #
 # `test_one_alphabet_decides_what_is_blank_in_every_layer` reads this tuple back out of
-# `sqlite_master` and out of `frontend/lib/dismissal.ts` and requires all three to be identical.
-BLANK_CODEPOINTS = (
-    0x09, 0x0A, 0x0B, 0x0C, 0x0D,                    # tab, newline, vertical tab, form feed, CR
-    0x1C, 0x1D, 0x1E, 0x1F,                          # the four information separators
-    0x20,                                            # space
-    0x85,                                            # next line
-    0xA0,                                            # no-break space
-    0x1680,                                          # ogham space mark
-    0x2000, 0x2001, 0x2002, 0x2003, 0x2004, 0x2005,  # en quad … figure space
-    0x2006, 0x2007, 0x2008, 0x2009, 0x200A,          # … hair space
-    0x200B,                                          # zero width space — invisible, not blank
-    0x2028, 0x2029,                                  # line and paragraph separators
-    0x202F,                                          # narrow no-break space
-    0x205F,                                          # medium mathematical space
-    0x3000,                                          # ideographic space
-    0xFEFF,                                          # zero width no-break space
-)
+# `sqlite_master` and out of `frontend/lib/blank.ts` and requires all three to be identical.
+#
+# **The tuple moved to `store/blanks.py` and this name is bound to it** (CHG-039). CHG-037's
+# answer was right and its reach was one module: three other columns a person types — the crew
+# label on a placement and a storm's name and source note — went on being trimmed by whatever
+# their own module reached for, and each let a different invisible character through. The
+# alphabet cannot live here now, because `store/decisions.py` needs it too and this module
+# imports *that* one; a leaf module is what keeps FF-001 satisfied.
+BLANK_CODEPOINTS = blanks.BLANK_CODEPOINTS
 
-WHITESPACE = "".join(chr(point) for point in BLANK_CODEPOINTS)
+WHITESPACE = blanks.WHITESPACE
 
 # Every run of the alphabet, so a neighbourhood is collapsed the way the store's own check
 # requires it to have been collapsed. `" ".join(value.split())` was the same idea against a

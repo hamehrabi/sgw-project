@@ -4,13 +4,17 @@ Upload a fixture carrying all seven defects, parse it, and rank it. Expect 201 o
 scenario becomes rankable; every ranked item carries reasons. One scenario row; assets present
 with `match_status`; risk scores at revision 0; **no second scenario**.
 
-**The ranking half belongs to TASK-003 and is skipped by name below**, not quietly dropped.
-Standing up a placeholder scorer to satisfy it would anticipate the module TASK-002's *do not
-change* list forbids touching, and ADR-005 would have to tear it out again. What this file
-asserts today is everything up to the boundary: upload, parse, join, and one scenario.
+**The ranking half was skipped by name while TASK-003 did not exist**, rather than quietly
+dropped — standing up a placeholder scorer would have anticipated the module TASK-002's *do not
+change* list forbade touching. TASK-003 shipped the scorer, and the skip outlived the reason for
+it by six tasks: `cicd-pipeline.md`'s own rule says *a test that is skipped to make the pipeline
+pass is a finding, not a fix*, and a skip whose stated cause has been resolved is that finding
+wearing an explanation. It is paid at the foot of this file, and the suite now has **no skipped
+test at all**.
 """
 
-import pytest
+import json
+
 from conftest import fixture_files, sign_in
 
 
@@ -94,6 +98,49 @@ def test_the_upload_is_recorded_as_ready_and_names_its_scenario(client, applicat
     assert row["failed_file"] is None
 
 
-@pytest.mark.skip(reason="ranking is TASK-003, behind ADR-005's boundary; see the docstring")
-def test_the_scenario_becomes_rankable_and_every_item_carries_reasons():
-    """Owed by TASK-003: risk scores at revision 0, every one with at least one reason."""
+def test_the_scenario_becomes_rankable_and_every_item_carries_reasons(
+    client, application, accounts
+):
+    """Owed by TASK-003, and paid here — the skip is gone rather than re-explained.
+
+    **Why this is not ATEST-003 again.** ATEST-003 reads the ranking out of the *response*.
+    This is the integration test named in `integration-tests.md`, and its integration point is
+    **load → parse → join → rank → store**, so it asserts the rows `risk_scores` holds after one
+    pass over a fixture carrying all seven defects. `technical-spec.md` §6 makes that the
+    difference that matters: every read is served from stored results, so a ranking that is
+    correct in the response and absent from the table is a ranking that does not survive the
+    next request.
+
+    The haystack is named before anything is reported absent (`AGENT.md`, 2026-08-16): the
+    number of stored rows is asserted against the number of assets, so *every row carries a
+    reason* cannot be satisfied by a table with no rows in it.
+    """
+    as_admin(client, accounts)
+    scenario_id = upload(client).json()["scenario_id"]
+
+    client.get(f"/api/v1/scenarios/{scenario_id}/risks")
+
+    rows = application.state.db.execute(
+        "select * from risk_scores where scenario_id = ?", (scenario_id,)
+    ).fetchall()
+    assets = application.state.db.execute(
+        "select count(*) from assets where scenario_id = ?", (scenario_id,)
+    ).fetchone()[0]
+
+    assert assets, "the fixture must have loaded, or nothing below means anything"
+    assert len(rows) == assets, "every asset is IN the ranking, scorable or not"
+    assert {row["forecast_revision"] for row in rows} == {0}
+
+    scored = [row for row in rows if row["score"] is not None]
+    unscored = [row for row in rows if row["score"] is None]
+
+    assert scored, "a fixture that ranks nothing cannot prove a rank carries its reasons"
+    assert unscored, "the fixture's unscorable asset must reach the store, not be dropped"
+
+    for row in scored:
+        assert json.loads(row["reasons"]), f"BR-002: {row['asset_id']} is ranked with no reason"
+    for row in unscored:
+        assert row["unscored_reason"], (
+            f"{row['asset_id']} has no score and no reason for having none — "
+            "an empty cell must never read as safety"
+        )
