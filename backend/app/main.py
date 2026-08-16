@@ -8,7 +8,16 @@ first request during a storm (TASK-001 acceptance criterion 7).
 from fastapi import FastAPI
 from fastapi.exceptions import RequestValidationError
 
-from app.api import auth, dispatch, errors, health, placements, recommendations, scenarios
+from app.api import (
+    auth,
+    dismissals,
+    dispatch,
+    errors,
+    health,
+    placements,
+    recommendations,
+    scenarios,
+)
 from app.api.middleware import RequestContext, SessionGuard
 from app.api.rate_limit import RateLimiter
 from app.config import load_config
@@ -36,6 +45,7 @@ def create_app() -> FastAPI:
     application.include_router(auth.router)
     application.include_router(scenarios.router)
     application.include_router(dispatch.router)
+    application.include_router(dismissals.router)
     application.include_router(placements.router)
     application.include_router(recommendations.router)
 

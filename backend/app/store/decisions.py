@@ -16,6 +16,8 @@ from datetime import UTC, datetime
 RECOMMENDATION = "recommendation"
 DECISIONS = ("accept", "change", "reject")
 PLACEMENT = "placement"
+DISMISS = "dismiss"
+DAMAGE_REPORT = "damage_report"
 
 # One bound, and the schema holds the other copy of it. `decision_records_placement_shape`
 # (migration 012) refuses a stored crew label outside `between 1 and CREW_LABEL_MAX`, and
@@ -38,7 +40,25 @@ def _now() -> str:
     return datetime.now(UTC).isoformat()
 
 
-def _append(connection, *, scenario_id, kind, subject_type, subject_id, payload, actor_user_id):
+def _append(
+    connection,
+    *,
+    scenario_id,
+    kind,
+    subject_type,
+    subject_id,
+    payload,
+    actor_user_id,
+    commit=True,
+):
+    """Append one row.
+
+    `commit=False` is for a caller that is already inside a transaction and whose other
+    statement must stand or fall with this one — `store/dispatch.dismiss_report` is the only
+    such caller today. It is a parameter rather than a second function because the row written
+    must be identical either way, sequence included: two ways to write an audit row are two
+    audit-row shapes the day one of them is changed.
+    """
     record_id = f"DR-{uuid.uuid4().hex[:12]}"
     connection.execute(
         "insert into decision_records"
@@ -60,7 +80,8 @@ def _append(connection, *, scenario_id, kind, subject_type, subject_id, payload,
             json.dumps(payload),
         ),
     )
-    connection.commit()
+    if commit:
+        connection.commit()
     return record_id
 
 
@@ -158,6 +179,52 @@ def append_placement(
             "note": note,
         },
         actor_user_id=actor_user_id,
+    )
+
+
+def append_dismissal(
+    connection,
+    *,
+    scenario_id,
+    report_id,
+    repair_job_id,
+    neighbourhood,
+    reason,
+    actor_user_id,
+) -> str:
+    """Record that a person cleared a false alarm (REQ-F-008, AC-008).
+
+    **A record, never an action** (BR-001). Dismissing an alarm cancels no work, closes no repair
+    job and reaches nothing outside the platform. The job the report was filed against stays on
+    the board reading *explained* rather than *empty* (CHG-020) — whether work leaves a shared
+    board is not this row's decision to take.
+
+    **Written without committing, inside the caller's transaction.** The report's own columns and
+    this row are one fact: a dismissal that is not recorded, and a record of a dismissal that did
+    not happen, are both worse than a refusal.
+
+    **The payload repeats three facts the report already holds, and that is deliberate.**
+    `decision_records` does not cascade with its scenario (migration 006) because an audit row
+    must outlive the thing it describes — a row that only pointed at the report would say nothing
+    at all once the storm was deleted. `decision_records_dismiss_shape` (migration 014) is what
+    stops the two copies ever disagreeing: they must be equal when this row is written, and
+    neither can move afterwards.
+
+    Nothing finer than a neighbourhood, because nothing finer exists to copy (CON-003).
+    """
+    return _append(
+        connection,
+        scenario_id=scenario_id,
+        kind=DISMISS,
+        subject_type=DAMAGE_REPORT,
+        subject_id=report_id,
+        payload={
+            "reason": reason,
+            "neighbourhood": neighbourhood,
+            "repair_job_id": repair_job_id,
+        },
+        actor_user_id=actor_user_id,
+        commit=False,
     )
 
 

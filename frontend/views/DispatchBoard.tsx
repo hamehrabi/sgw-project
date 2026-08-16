@@ -16,6 +16,10 @@
  *   storm is indistinguishable from a network with nothing wrong with it.
  * - **Nothing here dispatches.** Filing a report records that work exists. No crew is moved and
  *   no message leaves the platform (BR-001, BR-005), and the form says so.
+ * - **A false alarm is cleared in one action and never anonymously** (REQ-F-008). Every open
+ *   report carries a `DismissAlarmControl`; clearing one takes it off the working list and
+ *   leaves the job it was filed against on the board, reading *explained* rather than *empty*
+ *   (CHG-020). Nothing is cancelled and nobody is stood down.
  *
  * A location is a neighbourhood and never finer — the field accepts nothing else, and the
  * server refuses an address (CON-003, REQ-NF-007). It computes no score, rank or band.
@@ -25,17 +29,25 @@ import { useCallback, useEffect, useState } from 'react'
 
 import { Board, DamageReport, RepairJob, RequestFailed, dispatch } from '@/lib/api'
 
-function Report({ report }: { report: DamageReport }) {
+import { DismissAlarmControl } from './DismissAlarmControl'
+
+/**
+ * One report on the board, with the one-action way to clear it if it was a false alarm
+ * (REQ-F-008). The control sits on the report rather than on the job, because a job may answer
+ * several calls and clearing one of them is not a judgement about the others.
+ */
+function Report({ report, onDismissed }: { report: DamageReport; onDismissed: () => void }) {
   return (
     <li data-testid="job-report">
       <span className="job__time">{report.reported_at}</span>
       {report.asset_id ? ` · asset ${report.asset_id}` : ' · no asset named'}
       {report.status !== 'open' && <span className="badge"> {report.status}</span>}
+      <DismissAlarmControl reportId={report.report_id} onDismissed={onDismissed} />
     </li>
   )
 }
 
-function Job({ job }: { job: RepairJob }) {
+function Job({ job, onDismissed }: { job: RepairJob; onDismissed: () => void }) {
   return (
     <li className="job" data-testid="job">
       <div className="job__head">
@@ -59,7 +71,7 @@ function Job({ job }: { job: RepairJob }) {
       </div>
       <ul className="job__reports">
         {job.reports.map((report) => (
-          <Report key={report.report_id} report={report} />
+          <Report key={report.report_id} report={report} onDismissed={onDismissed} />
         ))}
       </ul>
     </li>
@@ -74,7 +86,13 @@ function Job({ job }: { job: RepairJob }) {
  * work is the one thing `frontend-component-spec.md` says this screen must never do, and an
  * empty screen must never read as safety.
  */
-function Unattached({ reports }: { reports: DamageReport[] }) {
+function Unattached({
+  reports,
+  onDismissed,
+}: {
+  reports: DamageReport[]
+  onDismissed: () => void
+}) {
   if (reports.length === 0) return null
   return (
     <section className="board__unattached" data-testid="board-unattached">
@@ -84,7 +102,7 @@ function Unattached({ reports }: { reports: DamageReport[] }) {
       </h3>
       <ul className="job__reports">
         {reports.map((report) => (
-          <Report key={report.report_id} report={report} />
+          <Report key={report.report_id} report={report} onDismissed={onDismissed} />
         ))}
       </ul>
     </section>
@@ -193,10 +211,13 @@ export function DispatchBoard({ scenarioId }: { scenarioId: string }) {
             </p>
             <ul className="board__jobs">
               {board.items.map((job) => (
-                <Job key={job.job_id} job={job} />
+                <Job key={job.job_id} job={job} onDismissed={() => void read()} />
               ))}
             </ul>
-            <Unattached reports={board.unattached_reports} />
+            <Unattached
+              reports={board.unattached_reports}
+              onDismissed={() => void read()}
+            />
           </>
         )}
     </section>

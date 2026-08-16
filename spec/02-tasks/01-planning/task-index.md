@@ -15,7 +15,7 @@
 | TASK-005 | Dispatch board — one shared damage and repair list | REQ-F-007, REQ-NF-007 | P1 | TASK-002 | **In review** | agent | ATEST-007, ITEST-003, PTEST-002, UTEST-012, ITEST-002 (the ordering half) |
 | TASK-006 | Re-rank on a forecast change, keeping the previous order | REQ-F-004, AC-005 | P1 | TASK-003 | **In review** | agent | ATEST-005, ITEST-004 |
 | TASK-007 | Record a crew placement against the ranking | REQ-F-005, BR-001 | P1 | TASK-003 | **In review** | agent | E2E-001, FTEST-005 (the placement half) |
-| TASK-008 | Dismiss a false alarm in one action | REQ-F-008 | P1 | TASK-005 | Not started | agent | UTEST-011 |
+| TASK-008 | Dismiss a false alarm in one action | REQ-F-008, REQ-F-009, AC-008 | P1 | TASK-005 | **In review** | agent | UTEST-011 |
 | TASK-009 | Switch between several loaded storms | REQ-F-010 | P2 | TASK-002 | **In review** | agent | ITEST-005 |
 | TASK-010 | Wire the **remaining** fitness function into the build gate | FF-003 | P1 | — | Not started | human | — (the register is the assertion) |
 
@@ -194,6 +194,35 @@ holding a SHA-256 digest, because the content key §5's idempotency rule turns o
 its own — and that rule lived in one service-layer lookup a direct insert walked straight past)
 and **CHG-032** (`scenarios` had no total order, so a list of storms loaded inside one clock tick
 came back in coin-flip order — CHG-018's decision, on the fourth table).
+
+**TASK-008 is built and In review, and it was started without assuming any earlier task is
+accepted** — it adds no table, and the only existing code it changes is what a dismissal needs:
+one status constant moved into the store, one `_append` gaining the ability to write inside a
+caller's transaction, and one report row on the board gaining a control. `TASK-008.md` is
+written, **UTEST-011** exists as 44 executable cases, migration **014** is shipped with an up and
+a down (010 and 011 went to TASK-006, 012 to TASK-007 and 013 to TASK-009, so the number the
+brief reserved had drifted for the fourth time), and the whole gate is green — suite **499 + 1
+skipped**, `ruff`, six fitness functions, ten evals, `tsc`, `lint`, `build` and **36** Playwright
+specs.
+
+**Every case written for it was mutation-checked — 20 mutations — and the most useful ones were
+the two that proved a refusal was being read for the right reason.** With
+`decision_records_dismiss_shape` removed, the actorless-dismissal case still raised
+`IntegrityError` (migration 006's own check catches it) and the test went red anyway, because it
+reads the sentence rather than the exception class — the discipline `review-log.md` recorded
+after `POST /placements` answered `404` for two different reasons. And a `when` clause pointed at
+the wrong status — *present and wrong* rather than absent — turned **27** tests red including the
+silent case, where its absence turns only 3 red. The one-argument `trim()` mutation reproduced
+CHG-023's exact hole on the new column: `'   '` refused, `char(9)||char(10)` **stored**.
+
+**Three change entries are open against this task and none is accepted.** **CHG-033** (`is not
+null` is satisfied by a reason that is not one — an empty, whitespace-only or untrimmed string
+was a storable reason for a dismissal, which is CHG-023's hole in the same table one column
+over), **CHG-034** (a dismissal could be rewritten by a direct `UPDATE`, so *who dismissed it and
+why* meant *whoever wrote it last* — CHG-026's finding one table over) and **CHG-035**
+(`decision_records.kind` has permitted `'dismiss'` since migration 006 with no writer, no reader
+and no shape, while AC-008 requires **any** human decision to be appended — the third instance of
+CHG-021's pattern, after `duplicate` and `placement`).
 
 **The ordering defect was never TASK-005's alone**, which is why this row matters to TASK-004 as
 well: `decision_records` has been intermittently mis-ordered since migration 006, and

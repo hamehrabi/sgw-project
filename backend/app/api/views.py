@@ -18,6 +18,8 @@ import json
 from datetime import UTC, datetime
 from pathlib import Path
 
+from app.store import dispatch
+
 REQUIRED_SOURCE_FILES = (
     "manifest.json",
     "assets.csv",
@@ -181,7 +183,35 @@ def damage_report_item(row) -> dict:
     }
 
 
-DISMISSED = "dismissed"
+# Read from the store rather than spelled again here: the filter that decides what the board
+# shows and the writer that sets the status are the same fact, and two copies of one string are
+# two facts the day either moves (TASK-008).
+DISMISSED = dispatch.DISMISSED
+
+
+def dismissal_item(report_row, record_row) -> dict:
+    """One cleared false alarm, as the dispatcher who cleared it reads it back (REQ-F-008).
+
+    Assembled from the **stored rows** rather than from the request that made it, so the
+    confirmation on screen is what the record holds and not what was asked for — the same reason
+    `placement_item` is built that way.
+
+    `dismissal_id` is the append-only row. It is returned because *never anonymous* is a claim
+    about a record, and a caller that cannot name the record cannot check the claim.
+
+    No location beyond the neighbourhood, because none is stored (CON-003).
+    """
+    return {
+        "report_id": report_row["id"],
+        "scenario_id": report_row["scenario_id"],
+        "repair_job_id": report_row["repair_job_id"],
+        "location": json.loads(report_row["location"]),
+        "status": report_row["status"],
+        "dismissed_by": report_row["dismissed_by"],
+        "dismissed_reason": report_row["dismissed_reason"],
+        "dismissal_id": record_row["id"],
+        "occurred_at": record_row["occurred_at"],
+    }
 
 
 def repair_job_item(job_row, filed: list[dict]) -> dict:

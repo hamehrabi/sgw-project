@@ -327,6 +327,29 @@ export interface Board {
   dismissed_report_count: number
 }
 
+/**
+ * A cleared false alarm (REQ-F-008).
+ *
+ * `dismissal_id` is the row in the append-only record. It is here because *never anonymous* is
+ * a claim about a record, and a caller that cannot name the record cannot check the claim.
+ */
+export interface Dismissal {
+  report_id: string
+  scenario_id: string
+  repair_job_id: string | null
+  location: { neighbourhood: string | null }
+  status: 'dismissed'
+  dismissed_by: string
+  dismissed_reason: string
+  dismissal_id: string
+  occurred_at: string
+}
+
+/** The longest reason the server will store. Mirrored from `dispatch.DISMISSAL_REASON_MAX`,
+ *  and used only to stop the field growing past what a `400` would refuse — the rule is the
+ *  server's, and this field being generous is never what makes a dismissal legal. */
+export const DISMISSAL_REASON_MAX = 2000
+
 export const dispatch = {
   board: (id: string) => request<Board>(`/api/v1/scenarios/${id}/jobs`),
 
@@ -335,6 +358,18 @@ export const dispatch = {
     request<DamageReport>(`/api/v1/scenarios/${id}/damage-reports`, {
       method: 'POST',
       body: JSON.stringify({ neighbourhood, asset_id: assetId }),
+    }),
+
+  /**
+   * Clear a false alarm. **One action, and never anonymous** (REQ-F-008): the reason travels
+   * with the request and who dismissed it comes from the session, so there is no shape of this
+   * call that records neither. Nothing is dispatched, cancelled or closed — the repair job the
+   * report was filed against stays on the board (BR-001, CHG-020).
+   */
+  dismiss: (reportId: string, reason: string) =>
+    request<Dismissal>(`/api/v1/damage-reports/${reportId}/dismiss`, {
+      method: 'POST',
+      body: JSON.stringify({ reason }),
     }),
 }
 

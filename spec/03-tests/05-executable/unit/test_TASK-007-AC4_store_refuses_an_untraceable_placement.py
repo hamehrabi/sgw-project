@@ -387,26 +387,36 @@ def test_the_placement_rules_leave_every_other_kind_alone(client, accounts, appl
 
     A guard that fires on rows it was not written for is the same defect as one that does not
     fire at all, and it is quieter: this payload has no crew, no assets and no revision, and a
-    `dismiss` row is entitled to all three.
+    row of another kind is entitled to lack all three.
+
+    **The kind used here was `dismiss` until TASK-008, and it is `reject` now.** Nothing about
+    this assertion changed — the placement trigger's `when` clause is still what is being
+    checked — but CHG-035 gave `dismiss` a shape of its own, so a fabricated `dismiss` row is no
+    longer a row *no* trigger has an opinion about, which is what this test needs. An ordinary
+    human decision is: `decision_records_placement_shape` is the only guard that could fire on
+    it, and it must not.
     """
     connection = application.state.db
     scenario_id = load(client, accounts)
+    recommendation = connection.execute(
+        "select id from decision_records where kind = 'recommendation'"
+    ).fetchone()["id"]
 
     insert(
         connection,
         scenario_id,
         accounts["user"]["id"],
-        json.dumps({"reason": "false alarm"}),
-        kind="dismiss",
-        subject_type="damage_report",
-        subject_id="DR-something",
+        json.dumps({"note": "Not this storm", "change": None}),
+        kind="reject",
+        subject_type="recommendation",
+        subject_id=recommendation,
     )
 
     assert (
         connection.execute(
             "select kind from decision_records where id = 'DR-direct'"
         ).fetchone()["kind"]
-        == "dismiss"
+        == "reject"
     )
 
 
