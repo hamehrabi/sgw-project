@@ -17,15 +17,14 @@ import { expect, Page, test } from '@playwright/test'
  * record that names the forecast revision it was taken against. The placement endpoint
  * and its API-level proof stand — a fact about rows stays provable where rows are.
  *
- * **The tests are ordered and the order is load-bearing**, the same way `ATEST-005.spec.ts`
- * and `ATEST-007.spec.ts` document. One backend, one database and one storm serve the whole
- * run; an identical re-upload resolves to the same scenario (§5, replace in place), so the
- * pointer this file advances in the second test stays advanced for the third.
+ * **The tests are ordered and the order is load-bearing**, the same way `ATEST-007.spec.ts`
+ * documents. One backend, one database and one storm serve the whole run; an identical
+ * re-upload resolves to the same scenario (§5, replace in place).
  * `fullyParallel: false` keeps tests inside a file in declaration order.
  *
- * **No other spec loads `storm-for-the-planning-flow`**, which is why it can be advanced
- * here at all — `ATEST-005.spec.ts` says the same thing about its own fixture, and the two
- * would otherwise move each other's pointer underneath them.
+ * **No other spec loads `storm-for-the-planning-flow`.** (CHG-062 removed the on-screen
+ * forecast walk this file used to exercise; applying a change and reading an earlier
+ * order are API facts now, proven in the pytest half.)
  */
 
 const FIXTURE = path.resolve(
@@ -34,9 +33,6 @@ const FIXTURE = path.resolve(
 )
 const FILES = ['manifest.json', 'assets.csv', 'maintenance.csv', 'weather.csv', 'outages.csv']
 
-/** The forecast moves GC-04 from 61 to 155 mph and GC-01 from 96 to 40; these two swap. */
-const RISES = 'SS-5566'
-const FALLS = 'SS-1042'
 /** In the ranking and not ranked — no weather row covers it. Shown, never sorted as safe. */
 const UNSCORED = 'LN-8899'
 
@@ -54,17 +50,6 @@ async function loadedStorm(page: Page) {
   await expect(page.getByTestId('upload-success')).toBeVisible({ timeout: 30_000 })
   await page.getByTestId('finish-continue').click()
   await expect(page.getByTestId('risk-list')).toBeVisible()
-}
-
-/** The codes, top to bottom, as a person reads them off the screen. */
-async function orderOnScreen(page: Page): Promise<string[]> {
-  return page.locator('[data-testid="risk-list"] .row__codes').allInnerTexts()
-}
-
-function positionOf(order: string[], code: string): number {
-  const index = order.findIndex((row) => row.includes(code))
-  expect(index, `${code} is not on the ranking`).toBeGreaterThan(-1)
-  return index
 }
 
 /** Open the drawer for the top-ranked asset by clicking its name in the table. */
@@ -107,39 +92,6 @@ test('the planning view reaches a recorded decision, and says nothing was dispat
   await expect(recorded).toContainText('no crew has been moved')
 })
 
-test('after the forecast change, a decision records the revision the operator was reading', async ({
-  page,
-}) => {
-  await loadedStorm(page)
-  const before = await orderOnScreen(page)
-  expect(positionOf(before, FALLS)).toBeLessThan(positionOf(before, RISES))
-
-  // Steps 3 and 4 — apply the change, and the list re-ranks.
-  await page.getByTestId('apply-forecast').click()
-  await expect(page.getByTestId('forecast-revisions')).toContainText('Forecast revision 1')
-  const after = await orderOnScreen(page)
-  expect(positionOf(after, RISES)).toBeLessThan(positionOf(after, FALLS))
-
-  // Step 5 — accept the new order, and the record says revision 1.
-  await openTopAsset(page)
-  await page.getByRole('button', { name: 'Accept ranking' }).click()
-  await expect(page.getByTestId('triage-recorded')).toContainText('forecast revision 1')
-  await page.keyboard.press('Escape')
-
-  // And the previous order, still one click away — with a decision recorded against **it**
-  // rather than against the list the storm has since moved to. The drawer follows what is
-  // being read, not what the pointer says.
-  // CHG-057: the comparison chips wait behind a disclosure now — open it first.
-  await page.getByTestId('forecast-history-toggle').click()
-  await page.getByTestId('view-revision-0').click()
-  await expect(page.getByTestId('viewing-earlier')).toContainText('It has not changed')
-  expect(await orderOnScreen(page)).toEqual(before)
-
-  await openTopAsset(page)
-  await page.getByRole('button', { name: 'Accept ranking' }).click()
-  await expect(page.getByTestId('triage-recorded')).toContainText('forecast revision 0')
-})
-
 test('a failed save shows the failure and keeps the typed note on screen', async ({
   page,
 }) => {
@@ -180,11 +132,21 @@ test('a failed save shows the failure and keeps the typed note on screen', async
 })
 
 test('no ranking on screen, no decision offered against it', async ({ page }) => {
-  await loadedStorm(page)
-
   // BR-001's screen shape: a decision is a decision about a list, and a person takes it
   // while looking at one. A triage door standing beside a ranking that failed to load
-  // would invite a decision against nothing.
+  // would invite a decision against nothing. The failed read happens on the way into the
+  // surface — CHG-062 removed the revision control that used to re-trigger it in place.
+  await page.goto('/')
+  await page.getByLabel('Email').fill('ops@sgw.example')
+  await page.getByLabel('Password').fill('e2e-fixture-password')
+  await page.getByRole('button', { name: 'Sign in' }).click()
+  await page.getByLabel('Source name').fill('Planning flow rehearsal')
+  await page.setInputFiles(
+    '#storm-files',
+    FILES.map((name) => path.join(FIXTURE, name)),
+  )
+  // Installed BEFORE processing: the screen reads its ranking the moment the storm is
+  // chosen, not when the surface is opened, so the refusal has to be waiting for it.
   await page.route('**/api/v1/scenarios/*/risks*', (route) =>
     route.fulfill({
       status: 404,
@@ -192,14 +154,13 @@ test('no ranking on screen, no decision offered against it', async ({ page }) =>
       body: JSON.stringify({ code: 'not_found', message: 'This storm has no forecast revision.' }),
     }),
   )
-  // CHG-057: the comparison chips wait behind a disclosure now — open it first.
-  await page.getByTestId('forecast-history-toggle').click()
-  await page.getByTestId('view-revision-0').click()
+  await page.getByRole('button', { name: 'Process data' }).click()
+  await expect(page.getByTestId('upload-success')).toBeVisible({ timeout: 30_000 })
+  await page.getByTestId('finish-continue').click()
 
   await expect(page.getByText('We could not load the ranking')).toBeVisible()
   await expect(page.getByTestId('start-triage')).toHaveCount(0)
   await expect(page.getByTestId('top-risk-strip')).toHaveCount(0)
-  // The way back is still on screen — the control is rendered from the scenario, not from
-  // the ranking, so a failed read is one failed panel rather than a screen with no exit.
-  await expect(page.getByTestId('forecast-revisions')).toBeVisible()
+  // The screen is degraded, not broken: the storm's own facts are still stated.
+  await expect(page.getByTestId('staleness-banner')).toBeVisible()
 })

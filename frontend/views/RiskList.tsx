@@ -195,7 +195,7 @@ export function RiskList({
 
   if (state === 'loading')
     return (
-      <p role="status" className="text-[13px] text-muted">
+      <p role="status" data-testid="risk-list-loading" className="text-[13px] text-muted">
         Working out the ranking…
       </p>
     )

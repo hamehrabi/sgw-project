@@ -71,9 +71,9 @@ gate       bash ci/gate.sh — nine stages. The suite PLUS FF-001..FF-007 PLUS t
 
 ## Where things stand
 
-- **Stage:** specification complete and **all ten tasks Done** (2026-08-16). 738 tests, none
-  skipped; seven fitness functions; ten evals; 42 browser cases; `bash ci/gate.sh` exits 0.
-- **Done is not the same as decided.** Forty-five change entries are `proposed` and **none is
+- **Stage:** specification complete and **all ten tasks Done** (2026-08-16). 744 tests, none
+  skipped; seven fitness functions; ten evals; 39 browser cases; `bash ci/gate.sh` exits 0.
+- **Done is not the same as decided.** Forty-seven change entries are `proposed` and **none is
   accepted**. Two contradict each other (CHG-034, CHG-035), and one live defect is knowingly
   unfixed — see the root `CLAUDE.md`, *Known open defects*.
 - **The last review round is the weakest in the log and says so.** TASK-005 to TASK-009 were

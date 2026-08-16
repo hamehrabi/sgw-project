@@ -58,6 +58,7 @@ DATA_ROUTES = [
 PUBLIC = {
     ("GET", "/api/v1/health"),
     ("POST", "/api/v1/auth/session"),
+    ("POST", "/api/v1/auth/signup"),
     ("GET", "/api/v1/auth/session"),
     ("DELETE", "/api/v1/auth/session"),
 }

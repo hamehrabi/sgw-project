@@ -1,24 +1,28 @@
 """The two authentication endpoints from `api-specification.md`, the read of the current
-session added by CHG-009, and the password change CHG-053 requires.
+session added by CHG-009, the password change CHG-053 requires, and the self-service
+sign-up CHG-061 added at the client's instruction.
 
-No account-creation path, no self-service registration, no reset **link**, and no second
-factor. Each is excluded by a decision rather than by omission: SEC-A-006 and Q-022 for the
-factor, CHG-004 and A-003 for the reset (an admin sets a temporary password instead — and
-CHG-053 is what makes it temporary), and `security-specification.md` §7 for account
-creation — "roles are set in the database, not through any endpoint".
+No reset **link** and no second factor, each excluded by a decision rather than by
+omission: SEC-A-006 and Q-022 for the factor, CHG-004 and A-003 for the reset (an admin
+sets a temporary password instead — and CHG-053 is what makes it temporary).
+`security-specification.md` §7's "no endpoint creates an account" was reversed by CHG-061
+for exactly one shape: a signed-out caller may create an **operator** account and nothing
+else — the role is not a parameter, and admin still exists only through the CLI.
 """
 
 import logging
+import sqlite3
 from datetime import UTC, datetime
 
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse, Response
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from app.api import errors
 from app.api.events import log_event
 from app.api.middleware import SESSION_COOKIE
 from app.store import security, sessions, users
+from app.store.blanks import is_blank, trim
 
 router = APIRouter(prefix="/api/v1/auth", tags=["auth"])
 
@@ -111,6 +115,77 @@ async def sign_in(request: Request, credentials: Credentials) -> Response:
         SESSION_COOKIE,
         raw_token,
         httponly=True,          # never reachable from script
+        samesite="strict",
+        secure=config.cookies_require_https,
+        path="/",
+        max_age=config.session_absolute_max_hours * 3600,
+    )
+    return response
+
+
+class Signup(BaseModel):
+    # `extra="forbid"`: the role is NOT a parameter, and a request that tries to make it
+    # one is refused rather than quietly stripped.
+    model_config = ConfigDict(extra="forbid")
+
+    name: str = Field(min_length=1, max_length=120)
+    email: str = Field(min_length=3, max_length=EMAIL_MAX_LENGTH)
+    password: str = Field(min_length=1, max_length=PASSWORD_MAX_LENGTH)
+
+
+@router.post("/signup", status_code=201)
+async def sign_up(request: Request, body: Signup) -> Response:
+    """Create an operator account and sign it in (CHG-061).
+
+    Operator, always — self-registration never grants the role that loads storms and
+    resolves identity. The password policy is the platform's one policy
+    (`PASSWORD_MIN_LENGTH`, the CLI's and the password change's), and blank is judged by
+    the shared alphabet, never by `str.strip()`.
+    """
+    connection = request.app.state.db
+    config = request.app.state.config
+
+    name = trim(body.name)
+    if is_blank(body.name):
+        return errors.error(400, "validation_error", "A name is required.")
+    if is_blank(body.password) or len(body.password) < PASSWORD_MIN_LENGTH:
+        return errors.error(
+            400, "validation_error",
+            f"A password is at least {PASSWORD_MIN_LENGTH} characters.",
+        )
+    if "@" not in body.email or is_blank(body.email):
+        return errors.error(400, "validation_error", "A valid email address is required.")
+
+    try:
+        user_id = users.create_user(
+            connection,
+            name=name,
+            email=body.email,
+            password=body.password,
+            role="operator",
+            cost=config.password_hash_cost,
+        )
+    except sqlite3.IntegrityError:
+        # This necessarily confirms the address is in use — recorded in CHG-061 as the
+        # cost of a signup form without an email-verification system, taken knowingly.
+        log_event("AUTH_SIGNUP_REFUSED", level=logging.WARNING, outcome="refused")
+        return errors.error(409, "email_taken", "That email address is already registered.")
+
+    user = users.find_by_email(connection, body.email)
+    raw_token = sessions.create(connection, user_id)
+    log_event("AUTH_SIGNUP_SUCCEEDED", user_id=user_id, role="operator", outcome="signed_up")
+    security.log(
+        connection,
+        event="sign_in",
+        detail=f"{name} signed up (operator)",
+        actor_user_id=user_id,
+    )
+
+    response = JSONResponse(status_code=201, content=_identity(user))
+    response.set_cookie(
+        SESSION_COOKIE,
+        raw_token,
+        httponly=True,
         samesite="strict",
         secure=config.cookies_require_https,
         path="/",

@@ -39,12 +39,10 @@ import { Button } from '@/components/ui/button'
 
 import { AssetDetailSheet } from './AssetDetailSheet'
 import { AssetMatchSheet } from './AssetMatchSheet'
-import { AssetTable } from './AssetTable'
 import { CrewStagingPlan } from './CrewStagingPlan'
 import { DataQualitySummary } from './DataQualitySummary'
 import { DispatchSurface } from './DispatchSurface'
 import { FocusMode } from './FocusMode'
-import { ForecastRevisionControl } from './ForecastRevisionControl'
 import { Headline } from './Headline'
 import { RiskList } from './RiskList'
 import { RiskMap } from './RiskMap'
@@ -80,28 +78,26 @@ export function ScenarioView({
   // Every stored per-asset summary for this storm (CHG-059) — read with the ranking, so
   // a summary generated last session opens without a request, let alone an inference.
   const [storedSummaries, setStoredSummaries] = useState<AssetSummary[]>([])
-  const [assetState, setAssetState] = useState<Panel>('ready')
   const [rankingState, setRankingState] = useState<Panel>('ready')
-  // Which forecast revision is on screen. `null` means "whichever is current".
-  const [viewing, setViewing] = useState<number | null>(null)
   const [openAsset, setOpenAsset] = useState<RiskItem | null>(null)
   const [triaging, setTriaging] = useState(false)
   const [reviewingMatches, setReviewingMatches] = useState(false)
   // Which read is the current one. A response whose generation is stale is dropped.
   const generation = useRef(0)
 
-  const read = useCallback(async (id: string, revision: number | null) => {
+  // Always the storm's current revision (CHG-062): the revision control left the screen,
+  // and with it the one way a reader chose an earlier order to look at.
+  const read = useCallback(async (id: string) => {
     const mine = (generation.current += 1)
-    setAssetState('loading')
     setRankingState('loading')
     const [detail, assets, risks, moved, summaries] = await Promise.allSettled([
       scenarios.read(id),
       scenarios.assets(id),
-      scenarios.risks(id, revision ?? undefined),
+      scenarios.risks(id),
       insights.movement(id),
       insights.assetSummaries(id),
     ])
-    // A newer storm or revision was chosen while these were in flight (REQ-F-010).
+    // A newer storm was chosen while these were in flight (REQ-F-010).
     if (generation.current !== mine) return
 
     if (detail.status === 'fulfilled') setScenario(detail.value)
@@ -109,7 +105,6 @@ export function ScenarioView({
     setRanking(risks.status === 'fulfilled' ? risks.value : null)
     setMovement(moved.status === 'fulfilled' ? moved.value : null)
     setStoredSummaries(summaries.status === 'fulfilled' ? summaries.value.items : [])
-    setAssetState(assets.status === 'fulfilled' ? 'ready' : 'error')
     setRankingState(risks.status === 'fulfilled' ? 'ready' : 'error')
   }, [])
 
@@ -121,16 +116,14 @@ export function ScenarioView({
     setRanking(null)
     setMovement(null)
     setStoredSummaries([])
-    setViewing(null)
     setOpenAsset(null)
     setTriaging(false)
-    setAssetState('loading')
     setRankingState('loading')
   }, [scenarioId])
 
   useEffect(() => {
-    if (scenarioId) void read(scenarioId, viewing)
-  }, [scenarioId, viewing, read])
+    if (scenarioId) void read(scenarioId)
+  }, [scenarioId, read])
 
   // The stored summaries for the revision on screen, keyed by asset (CHG-059) — the
   // table's popup and the drawer read from one map, so they can never disagree.
@@ -233,15 +226,9 @@ export function ScenarioView({
         <TopRiskStrip ranking={ranking} onReview={setOpenAsset} />
       )}
 
-      {/* Rendered from the scenario alone, deliberately not from the ranking: it is the
-          way back to an order that can be read, so it survives a read that could not be. */}
-      {scenario && (
-        <ForecastRevisionControl
-          scenario={scenario}
-          viewing={ranking?.forecast_revision ?? viewing ?? scenario.forecast_revision}
-          onView={setViewing}
-        />
-      )}
+      {/* CHG-062: the forecast-revision control left the screen at the client's
+          instruction. Applying a forecast change and reading an earlier order remain
+          API facts (REQ-F-004, AC-005) with no screen path. */}
 
       <div className="grid gap-6 xl:grid-cols-[1fr_300px]">
         <div className="min-w-0 space-y-5">
@@ -259,12 +246,9 @@ export function ScenarioView({
           {/* CHG-060: the whole-ranking decision form and the placement form are gone
               from this screen at the client's instruction. The decision surface is
               per-asset triage — the drawer and Focus Mode — and each action writes a
-              decision record naming the revision it was taken against. */}
-
-          <section>
-            <h2 className="mb-2 text-[15px] font-semibold">All assets</h2>
-            <AssetTable page={page} state={assetState} />
-          </section>
+              decision record naming the revision it was taken against. CHG-062 removed
+              the "All assets" joined view the same way; the provenance it carried is
+              still one click away, in each asset's drawer. */}
         </div>
 
         <div className="space-y-4">

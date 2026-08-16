@@ -523,6 +523,14 @@ export const auth = {
       body: JSON.stringify({ email, password }),
     }),
 
+  /** CHG-061: creates an OPERATOR account and signs it in. The role is the server's —
+   *  there is no field for one, and a request inventing one is refused. */
+  signUp: (name: string, email: string, password: string) =>
+    request<Identity>('/api/v1/auth/signup', {
+      method: 'POST',
+      body: JSON.stringify({ name, email, password }),
+    }),
+
   /** Who am I, and in which role. The only way `AppShell` learns the role after a reload. */
   current: () => request<Identity>('/api/v1/auth/session'),
 

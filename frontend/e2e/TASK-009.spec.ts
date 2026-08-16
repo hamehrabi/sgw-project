@@ -163,7 +163,6 @@ test('switching to another storm replaces every panel with that storm', async ({
 
   await chooseStorm(page, HELENE.name)
 
-  await expect(page.getByTestId('asset-table')).toBeVisible()
   await expect(page.getByTestId('risk-list')).toBeVisible()
   const showing = await screenText(page)
   expect(showing).toContain(HELENE.code)
@@ -176,11 +175,11 @@ test('switching back replaces it again, and neither storm leaks into the other',
 }) => {
   await bothStormsLoaded(page)
   await chooseStorm(page, HELENE.name)
-  await expect(page.getByTestId('asset-table')).toContainText(HELENE.code)
+  await expect(page.getByTestId('risk-list')).toContainText(HELENE.code)
 
   await chooseStorm(page, TRACK.name)
 
-  await expect(page.getByTestId('asset-table')).toContainText(TRACK.code)
+  await expect(page.getByTestId('risk-list')).toContainText(TRACK.code)
   const showing = await screenText(page)
   expect(showing).toContain(TRACK.code)
   expect(showing).not.toContain(HELENE.code)
@@ -195,18 +194,17 @@ test('the storm being left is gone from the screen before the next one arrives',
    * that is a ranking somebody could place a crew against.
    *
    * **Every scenario-scoped read is held**, not only the asset table's, because the panels
-   * differ in how they fail to clear. The two tables show a loading state on their own — the
+   * differ in how they fail to clear. The ranking shows a loading state on its own — the
    * read sets it before the request goes out — so the assertion that actually needs the screen
-   * to be *cleared* is about the panels rendered from the scenario itself:
-   * `ForecastRevisionControl` and `StalenessBanner` are drawn from `scenario`, and a `scenario`
-   * left standing puts the storm being left's forecast series above the storm being entered's
-   * name. Track shift carries three forecasts and Helene replay carries one, so the control is
-   * not merely stale — it offers revisions the storm on screen does not have.
+   * to be *cleared* is about the panel rendered from the scenario itself: `StalenessBanner`
+   * is drawn from `scenario`, and a `scenario` left standing puts the storm being left's
+   * age above the storm being entered's name (CHG-062 removed the revision control this
+   * comment used to name alongside it).
    */
   await bothStormsLoaded(page)
   await chooseStorm(page, TRACK.name)
-  await expect(page.getByTestId('asset-table')).toContainText(TRACK.code)
-  await expect(page.getByTestId('forecast-revisions')).toBeVisible()
+  await expect(page.getByTestId('risk-list')).toContainText(TRACK.code)
+  await expect(page.getByTestId('staleness-banner')).toBeVisible()
 
   let release: (() => void) | null = null
   const held = new Promise<void>((resolve) => {
@@ -220,16 +218,15 @@ test('the storm being left is gone from the screen before the next one arrives',
 
   await chooseStorm(page, HELENE.name)
 
-  // Mid-switch: the tables say they are loading, and nothing of Track shift is underneath.
-  await expect(page.getByTestId('asset-table-loading')).toBeVisible()
-  await expect(page.getByTestId('forecast-revisions')).toHaveCount(0)
+  // Mid-switch: the ranking says it is loading, and nothing of Track shift is underneath.
+  await expect(page.getByTestId('risk-list-loading')).toBeVisible()
   await expect(page.getByTestId('staleness-banner')).toHaveCount(0)
   expect(await screenText(page)).not.toContain(TRACK.code)
 
   release!()
   await page.unroute(anyScenarioRead)
-  await expect(page.getByTestId('asset-table')).toContainText(HELENE.code)
-  await expect(page.getByTestId('forecast-revisions')).toBeVisible()
+  await expect(page.getByTestId('risk-list')).toContainText(HELENE.code)
+  await expect(page.getByTestId('staleness-banner')).toBeVisible()
 })
 
 test('a read that was still in flight when the storm changed never reaches the screen', async ({
@@ -241,8 +238,8 @@ test('a read that was still in flight when the storm changed never reaches the s
    * last and it paints over the storm that is now selected — a ranking and an asset table
    * belonging to a storm nobody is looking at, with nothing on screen saying so.
    *
-   * Helene's asset read is held, the reader switches to Track shift, and Helene's response is
-   * then released **after** Track shift's has already arrived. The last switch has to win, not
+   * Helene's ranking read is held, the reader switches to Track shift, and Helene's response
+   * is then released **after** Track shift's has already arrived. The last switch has to win, not
    * the last response.
    */
   await bothStormsLoaded(page)
@@ -252,7 +249,7 @@ test('a read that was still in flight when the storm changed never reaches the s
     release = resolve
   })
   let firstAssetRead = true
-  await page.route('**/api/v1/scenarios/*/assets', async (route) => {
+  await page.route('**/api/v1/scenarios/*/risks*', async (route) => {
     if (firstAssetRead) {
       firstAssetRead = false
       await held
@@ -261,20 +258,20 @@ test('a read that was still in flight when the storm changed never reaches the s
   })
 
   await chooseStorm(page, HELENE.name)
-  await expect(page.getByTestId('asset-table-loading')).toBeVisible()
+  await expect(page.getByTestId('risk-list-loading')).toBeVisible()
   await chooseStorm(page, TRACK.name)
-  await expect(page.getByTestId('asset-table')).toContainText(TRACK.code)
+  await expect(page.getByTestId('risk-list')).toContainText(TRACK.code)
 
   // Helene's answer arrives now, long after the reader moved on.
   release!()
 
   // It must never appear. Given time to, if it were going to.
-  await expect(page.getByTestId('asset-table')).toContainText(TRACK.code)
+  await expect(page.getByTestId('risk-list')).toContainText(TRACK.code)
   await page.waitForTimeout(500)
   const showing = await screenText(page)
   expect(showing).toContain(TRACK.code)
   expect(showing).not.toContain(HELENE.code)
-  await page.unroute('**/api/v1/scenarios/*/assets')
+  await page.unroute('**/api/v1/scenarios/*/risks*')
 })
 
 test('the empty state reads "no storm loaded yet" and points an admin at the upload panel', async ({
@@ -297,10 +294,9 @@ test('the empty state reads "no storm loaded yet" and points an admin at the upl
   const switcher = page.getByTestId('scenario-switcher')
   await expect(switcher).toContainText('No storm loaded yet')
   await expect(switcher).toContainText('Load a prepared storm')
-  // Never a storm with nothing in it: there is no ranking, no asset table and no board on
-  // screen to be read as "nothing is at risk".
+  // Never a storm with nothing in it: there is no ranking and no board on screen to be
+  // read as "nothing is at risk".
   await expect(page.getByTestId('risk-list')).toHaveCount(0)
-  await expect(page.getByTestId('asset-table')).toHaveCount(0)
 })
 
 test('a non-admin is told there is no storm without being pointed at a panel they cannot use', async ({

@@ -45,7 +45,7 @@ async function loadTheStorm(page: Page, files = FILES) {
   }
 }
 
-test('an admin loads a prepared storm and reaches the joined asset view', async ({ page }) => {
+test('an admin loads a prepared storm and reaches the ranked view', async ({ page }) => {
   await signIn(page, 'ops@sgw.example')
   await expect(page.getByTestId('role')).toHaveText('admin')
 
@@ -53,11 +53,12 @@ test('an admin loads a prepared storm and reaches the joined asset view', async 
 
   await expect(page.getByTestId('upload-success')).toBeVisible({ timeout: 30_000 })
   await page.getByTestId('finish-continue').click()
-  await expect(page.getByTestId('asset-table')).toBeVisible()
-  // The two codes for one substation arrive as one row, all the way to the screen — once in
-  // the joined view and once in the ranking, and in neither as two assets.
+  await expect(page.getByTestId('risk-list')).toBeVisible()
+  // The two codes for one substation arrive as one row, all the way to the screen — one
+  // asset in the ranking, never two. (CHG-062 removed the joined table; the ranking
+  // caption carries the same codes, so the claim moved rather than died.)
   await expect(
-    page.getByTestId('asset-table').locator('tr', { hasText: 'SS-1042 · TX-4471' }),
+    page.locator('[data-testid="risk-list"] .row__codes', { hasText: 'SS-1042 · TX-4471' }),
   ).toHaveCount(1)
 })
 
@@ -69,7 +70,9 @@ test('records the join could not resolve reach a person rather than being droppe
   await expect(page.getByTestId('upload-success')).toBeVisible({ timeout: 30_000 })
   await page.getByTestId('finish-continue').click()
 
-  await expect(page.getByTestId('needs-review-count')).toContainText('2 record(s)')
+  // CHG-062 removed the joined table and its count line; the flag lives on the ranking
+  // rows themselves now, one badge per record the join withheld.
+  await expect(page.getByTestId('needs-review')).toHaveCount(2)
   await expect(page.getByTestId('needs-review').first()).toBeVisible()
 })
 
@@ -101,7 +104,6 @@ test('an incomplete set is named on screen and never offered for processing', as
   const staged = page.getByTestId('staged-files')
   await expect(staged.locator('li', { hasText: 'manifest.json' })).toContainText('Missing')
   await expect(page.getByTestId('process-data')).toBeDisabled()
-  await expect(page.getByTestId('asset-table')).toHaveCount(0)
   await expect(page.getByTestId('risk-list')).toHaveCount(0)
 })
 

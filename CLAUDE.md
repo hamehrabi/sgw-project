@@ -46,7 +46,7 @@ That is the weakest separation `review-log.md` records, and it is stated in the 
 hidden (Q-026). TASK-005, TASK-006 and TASK-008 are cleaner: the run neither wrote nor fixed
 them, and their checks held.
 
-**Done is not the same as decided. Forty-five change entries are open and none is accepted** (CHG-016..CHG-039 from the build rounds, CHG-040..CHG-055 from the interface rebuild, CHG-056 from the client-dialect fix, CHG-057..CHG-060 from the planning-page feedback rounds).
+**Done is not the same as decided. Forty-seven change entries are open and none is accepted** (CHG-016..CHG-039 from the build rounds, CHG-040..CHG-055 from the interface rebuild, CHG-056 from the client-dialect fix, CHG-057..CHG-062 from the planning-page feedback rounds).
 Two of them contradict each other (CHG-034 and CHG-035), and one records a defect deliberately
 left unfixed — see *Known open defects* below.
 
@@ -73,7 +73,7 @@ touching a line of code. Where a rule decides an *order*, a *resolution* or a *g
 fixture has to be one in which the wrong answers are different answers.
 
 **The gate is one script now, and the test suite is one of its nine stages:** `bash ci/gate.sh`
-— `pytest` (**738, none skipped**) · `ruff` · `ci/fitness.py` (**7 of 7 wired**) · `ci/evals.py`
+— `pytest` (**744, none skipped**) · `ruff` · `ci/fitness.py` (**7 of 7 wired**) · `ci/evals.py`
 (the quality floor) · `ci/triggers.py` (stage 7 — after migrate, a real `UPDATE` refused) ·
 `tsc` · `lint` · `build` · `playwright` (42, real Chromium against both processes).
 
@@ -276,7 +276,7 @@ cd frontend && npm install
 bash ci/gate.sh                                          # ALL of the below, in order
 
 # or one stage at a time
-.venv/Scripts/python.exe -m pytest                       # 738 tests, none skipped
+.venv/Scripts/python.exe -m pytest                       # 744 tests, none skipped
 .venv/Scripts/python.exe -m ruff check backend spec/03-tests/05-executable ci
 .venv/Scripts/python.exe ci/fitness.py                   # FF-001..FF-007, all seven
 .venv/Scripts/python.exe ci/triggers.py                  # stage 7, after migrate
@@ -290,7 +290,8 @@ cd frontend && npm run e2e     # Playwright starts BOTH processes; no mocks
 .venv/Scripts/python.exe -m uvicorn app.main:create_app --factory --port 8000
 cd frontend && npm run dev                               # proxies /api to :8000
 
-# accounts exist only here — no endpoint creates one, and none ever will
+# admin accounts exist only here. CHG-061 added POST /auth/signup, which creates
+# OPERATOR accounts only — the role is not a parameter, and no endpoint grants admin
 .venv/Scripts/python.exe -m app.cli create-user --name "Ops Manager" \
     --email ops@sgw.example --role admin                 # roles: admin | operator (CHG-045)
 .venv/Scripts/python.exe -m app.cli set-temp-password --email ops@sgw.example

@@ -15,6 +15,7 @@ import { expect, Page, test } from '@playwright/test'
  *  5. The planning screen opens with the answer, pages the ranking, maps the assets
  *     (CHG-057, CHG-058).
  *  6. An asset summary is phrased once, stored, and shown in popup and drawer (CHG-059).
+ *  7. A visitor signs up and lands in the app as an operator, never an admin (CHG-061).
  */
 
 const FIXTURE = path.resolve(
@@ -163,9 +164,6 @@ test('the planning screen opens with the answer, pages the ranking, and maps the
   expect(topmostIsDrawer).toBe('drawer')
   await page.keyboard.press('Escape')
 
-  // The forecast wall is one line now; the comparison waits behind its disclosure.
-  await expect(page.getByTestId('forecast-history-toggle')).toBeVisible()
-
   // Pagination (CHG-057, CHG-060): 25 by default, expandable, page context stated,
   // previous honest about there being nothing before page one.
   await expect(page.getByTestId('risk-pagination')).toContainText('ranked')
@@ -207,4 +205,17 @@ test('an asset summary is phrased once, shown in a popup, and shown in the drawe
     .click()
   await expect(page.getByTestId('sheet-summary')).toBeVisible()
   await expect(page.getByTestId('sheet-summary')).toContainText('Assembled from computed factors')
+})
+
+test('a visitor signs up and lands in the app as an operator', async ({ page }) => {
+  await page.goto('/')
+  await page.getByTestId('switch-to-sign-up').click()
+  await page.getByLabel('Name').fill('Walk-up Operator')
+  await page.getByLabel('Email').fill(`walkup.${Date.now()}@sgw.example`)
+  await page.getByLabel('Password').fill('walk-up-operator-pass')
+  await page.getByRole('button', { name: 'Create account' }).click()
+
+  // Signed in immediately, and as an operator — the server decided the role, and there
+  // was no field through which the form could have asked for another.
+  await expect(page.getByTestId('role')).toHaveText('operator')
 })

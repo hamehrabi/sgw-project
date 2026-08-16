@@ -17,13 +17,16 @@ from app.store import sessions, users
 
 SESSION_COOKIE = "sgw_session"
 
-# The only two things reachable without a session.
+# The only three things reachable without a session.
 #   - the health check, because it has to answer during an incident and
 #     `runtime-and-scale.md` §1 refuses on principle to gate it
 #   - sign-in, because otherwise nobody could ever sign in
+#   - sign-up (CHG-061), because a caller creating their first account has no session yet;
+#     it creates operators only, and the role is not a parameter
 PUBLIC_ROUTES = {
     ("GET", "/api/v1/health"),
     ("POST", "/api/v1/auth/session"),
+    ("POST", "/api/v1/auth/signup"),
 }
 
 # What a signed-in holder of a temporary password may still do (CHG-053): learn who they
