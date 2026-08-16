@@ -393,6 +393,22 @@ def summary_item(row) -> dict:
     }
 
 
+def asset_summary_item(row) -> dict:
+    """One stored per-asset summary (CHG-059). The label always travels with the text."""
+    return {
+        "asset_summary_id": row["id"],
+        "scenario_id": row["scenario_id"],
+        "asset_id": row["asset_id"],
+        "forecast_revision": row["forecast_revision"],
+        "text": row["text"],
+        "label": row["label"],
+        "source_figures": json.loads(row["source_figures"]),
+        "verification": json.loads(row["verification"]),
+        "created_at": row["created_at"],
+        "created_by": row["created_by"],
+    }
+
+
 def movement_item(row) -> dict:
     """One riser from the stored diff (CHG-044)."""
     return {

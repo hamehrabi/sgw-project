@@ -131,6 +131,8 @@ test('after the forecast change, a placement records the revision the operator w
   // And the previous order, still one button away — with a placement recorded against **it**
   // rather than against the list the storm has since moved to. This is done criterion 2 at the
   // screen: the form follows what is being read, not what the pointer says.
+  // CHG-057: the comparison chips wait behind a disclosure now — open it first.
+  await page.getByTestId('forecast-history-toggle').click()
   await page.getByTestId('view-revision-0').click()
   await expect(page.getByTestId('viewing-earlier')).toContainText('It has not changed')
   expect(await orderOnScreen(page)).toEqual(before)
@@ -199,6 +201,8 @@ test('no ranking on screen, no placement offered against it', async ({ page }) =
       body: JSON.stringify({ code: 'not_found', message: 'This storm has no forecast revision.' }),
     }),
   )
+  // CHG-057: the comparison chips wait behind a disclosure now — open it first.
+  await page.getByTestId('forecast-history-toggle').click()
   await page.getByTestId('view-revision-0').click()
 
   await expect(page.getByText('We could not load the ranking')).toBeVisible()

@@ -10,6 +10,7 @@ from fastapi.exceptions import RequestValidationError
 
 from app.api import (
     activity,
+    asset_summaries,
     auth,
     dismissals,
     dispatch,
@@ -56,6 +57,7 @@ def create_app() -> FastAPI:
     application.include_router(quality.router)
     application.include_router(staging.router)
     application.include_router(summaries.router)
+    application.include_router(asset_summaries.router)
     application.include_router(activity.router)
     application.include_router(triage.router)
 

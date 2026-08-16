@@ -12,22 +12,26 @@
  * - **The empty state reads "no ranking computed" — never "no risk."** A blank list
  *   during a storm is indistinguishable from a grid with nothing wrong with it.
  * - **An unscored asset is shown, plainly marked, and never sorted as though it were
- *   safe.** It sits at the end under its own heading — "we could not judge this" and
- *   "we judged this low" are different claims.
+ *   safe.** It sits at the end under its own heading — and it renders on **every page**
+ *   (CHG-057): an asset nobody could judge must never be hidden by a page boundary.
  *
- * **No numeric score appears in this table** — the design is right about that and the
- * old table was wrong: a number invites comparison arithmetic the bands already did,
- * and the reasons are the product. The band is the word, in its tint, never alone.
+ * Pagination is presentation, not a read path: `lib/api.ts` already followed the
+ * cursor to the end, and slicing here cannot lose a row the way a second fetch could.
+ *
+ * The Summary button asks the server for the stored per-asset summary (CHG-059),
+ * generating it only the first time. The popup renders what the guardrail already
+ * verified — nothing here judges text, and no view imports the model (ADR-009).
  *
  * It computes nothing. No score, no rank, no band — FF-002 fails the build if any of
  * ADR-007's constants appear anywhere in this directory.
  */
 
 import { ArrowDown, ArrowUp } from 'lucide-react'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 
 import { Badge, BandBadge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { Dialog, DialogClose, DialogContent } from '@/components/ui/dialog'
 import {
   Table,
   TableBody,
@@ -36,7 +40,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import { Movement, Ranking, RiskItem } from '@/lib/api'
+import { AssetSummary, insights, Movement, Ranking, RequestFailed, RiskItem } from '@/lib/api'
 
 import { ReasonPanel } from './ReasonPanel'
 
@@ -47,6 +51,8 @@ const FACTOR_CHIPS: Record<string, string> = {
   age_vs_service_life: 'Age',
   condition_decayed: 'Condition',
 }
+
+const PAGE_SIZES = [25, 50, 100] as const
 
 function MovementArrow({ delta }: { delta: number | null }) {
   if (delta === null || delta === 0) return null
@@ -69,10 +75,14 @@ function Row({
   item,
   delta,
   onOpen,
+  onSummary,
+  summaryState,
 }: {
   item: RiskItem
   delta: number | null
   onOpen: (item: RiskItem) => void
+  onSummary: (item: RiskItem) => void
+  summaryState: 'stored' | 'working' | 'none'
 }) {
   const [open, setOpen] = useState(false)
   const unscored = item.score === null
@@ -127,10 +137,22 @@ function Row({
             </Button>
           </div>
         </TableCell>
+        <TableCell className="whitespace-nowrap">
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-7 px-2.5 text-[12px]"
+            data-testid="asset-summary-button"
+            disabled={summaryState === 'working'}
+            onClick={() => onSummary(item)}
+          >
+            {summaryState === 'working' ? 'Summarising…' : 'Summary'}
+          </Button>
+        </TableCell>
       </TableRow>
       {open && (
         <tr className="border-b border-line bg-rail/40">
-          <td colSpan={4} className="px-3 py-3">
+          <td colSpan={5} className="px-3 py-3">
             <ReasonPanel item={item} />
           </td>
         </tr>
@@ -140,18 +162,36 @@ function Row({
 }
 
 export function RiskList({
+  scenarioId,
   ranking,
   state,
   movement,
+  summaries,
+  onSummaryStored,
   onOpenAsset,
   onStartTriage,
 }: {
+  scenarioId: string
   ranking: Ranking | null
   state: 'loading' | 'ready' | 'error'
   movement: Movement | null
+  /** Stored summaries for the revision on screen, keyed by asset (CHG-059). */
+  summaries: Map<string, AssetSummary>
+  onSummaryStored: (summary: AssetSummary) => void
   onOpenAsset: (item: RiskItem) => void
   onStartTriage: () => void
 }) {
+  const [perPage, setPerPage] = useState<number>(100)
+  const [pageIndex, setPageIndex] = useState(0)
+  const [reading, setReading] = useState<RiskItem | null>(null)
+  const [working, setWorking] = useState<string | null>(null)
+  const [summaryProblem, setSummaryProblem] = useState<string | null>(null)
+
+  // A new order restarts the pages — page 3 of the previous forecast is not a place.
+  useEffect(() => {
+    setPageIndex(0)
+  }, [ranking?.forecast_revision, ranking?.scenario_id, perPage])
+
   if (state === 'loading')
     return (
       <p role="status" className="text-[13px] text-muted">
@@ -185,6 +225,41 @@ export function RiskList({
       (mover.previous_rank ?? 0) - (mover.current_rank ?? 0),
     ]),
   )
+
+  const pages = Math.max(1, Math.ceil(scored.length / perPage))
+  const page = Math.min(pageIndex, pages - 1)
+  const start = page * perPage
+  const visible = scored.slice(start, start + perPage)
+
+  async function openSummary(item: RiskItem) {
+    setSummaryProblem(null)
+    const stored = summaries.get(item.asset_id)
+    if (stored) {
+      setReading(item)
+      return
+    }
+    setWorking(item.asset_id)
+    try {
+      const summary = await insights.generateAssetSummary(
+        scenarioId,
+        item.asset_id,
+        ranking!.forecast_revision,
+      )
+      onSummaryStored(summary)
+      setReading(item)
+    } catch (error) {
+      setSummaryProblem(
+        error instanceof RequestFailed
+          ? error.message
+          : 'We could not produce the summary. The ranking itself is unaffected.',
+      )
+      setReading(item)
+    } finally {
+      setWorking(null)
+    }
+  }
+
+  const readingSummary = reading ? (summaries.get(reading.asset_id) ?? null) : null
 
   return (
     <section data-testid="risk-list" className="space-y-3">
@@ -224,34 +299,157 @@ export function RiskList({
               <TableHead>Asset</TableHead>
               <TableHead className="w-24">Risk</TableHead>
               <TableHead>Why</TableHead>
+              <TableHead className="w-28">Summary</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
-            {scored.map((item) => (
+            {visible.map((item) => (
               <Row
                 key={item.asset_id}
                 item={item}
                 delta={deltas.get(item.asset_id) ?? null}
                 onOpen={onOpenAsset}
+                onSummary={(chosen) => void openSummary(chosen)}
+                summaryState={
+                  working === item.asset_id
+                    ? 'working'
+                    : summaries.has(item.asset_id)
+                      ? 'stored'
+                      : 'none'
+                }
               />
             ))}
           </TableBody>
 
+          {/* On every page, deliberately: paging must never hide the unjudged. */}
           {unscored.length > 0 && (
             <TableBody data-testid="unscored-group">
               <tr className="border-b border-line bg-rail">
-                <th colSpan={4} className="px-3 py-2 text-left text-[12px] font-medium text-ink-secondary">
+                <th colSpan={5} className="px-3 py-2 text-left text-[12px] font-medium text-ink-secondary">
                   {unscored.length} asset(s) could not be scored — shown here rather than left
                   out. They have <strong>not</strong> been judged low risk.
                 </th>
               </tr>
               {unscored.map((item) => (
-                <Row key={item.asset_id} item={item} delta={null} onOpen={onOpenAsset} />
+                <Row
+                  key={item.asset_id}
+                  item={item}
+                  delta={null}
+                  onOpen={onOpenAsset}
+                  onSummary={(chosen) => void openSummary(chosen)}
+                  summaryState={
+                    working === item.asset_id
+                      ? 'working'
+                      : summaries.has(item.asset_id)
+                        ? 'stored'
+                        : 'none'
+                  }
+                />
               ))}
             </TableBody>
           )}
         </Table>
       </div>
+
+      {/* CHG-057: pages over the whole stored order, stated as such. */}
+      <div
+        className="flex flex-wrap items-center justify-between gap-3 text-[12px] text-muted"
+        data-testid="risk-pagination"
+      >
+        <p className="tabular-nums">
+          Showing {scored.length === 0 ? 0 : start + 1}–{Math.min(start + perPage, scored.length)}{' '}
+          of {scored.length} ranked
+        </p>
+        <div className="flex items-center gap-3">
+          <span className="flex items-center gap-1" role="group" aria-label="Rows per page">
+            Per page
+            {PAGE_SIZES.map((size) => (
+              <button
+                key={size}
+                type="button"
+                data-testid={`per-page-${size}`}
+                aria-pressed={perPage === size}
+                onClick={() => setPerPage(size)}
+                className={
+                  perPage === size
+                    ? 'rounded-card border border-teal bg-teal-soft px-2 py-0.5 font-medium text-teal-deep'
+                    : 'rounded-card border border-line bg-background px-2 py-0.5 hover:bg-panel'
+                }
+              >
+                {size}
+              </button>
+            ))}
+          </span>
+          <span className="flex items-center gap-1.5">
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-7 px-2.5 text-[12px]"
+              data-testid="page-previous"
+              disabled={page === 0}
+              onClick={() => setPageIndex(page - 1)}
+            >
+              Previous
+            </Button>
+            <span className="tabular-nums">
+              Page {page + 1} of {pages}
+            </span>
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-7 px-2.5 text-[12px]"
+              data-testid="page-next"
+              disabled={page >= pages - 1}
+              onClick={() => setPageIndex(page + 1)}
+            >
+              Next
+            </Button>
+          </span>
+        </div>
+      </div>
+
+      {/* The summary popup (CHG-059). What it shows was verified server-side before it
+          was stored; the label says which path wrote it, always. */}
+      <Dialog open={reading !== null} onOpenChange={(open) => !open && setReading(null)}>
+        {reading && (
+          <DialogContent
+            title={
+              <span data-testid="summary-dialog-title">
+                {reading.name || reading.external_ids[0]}
+              </span>
+            }
+          >
+            <div className="space-y-3 overflow-y-auto p-4" data-testid="summary-dialog">
+              {summaryProblem ? (
+                <p role="alert" className="text-[13px] text-high-fg">
+                  {summaryProblem}
+                </p>
+              ) : readingSummary ? (
+                <>
+                  <p className="whitespace-pre-line text-[13px] leading-relaxed">
+                    {readingSummary.text}
+                  </p>
+                  <p className="text-[11px] text-muted">
+                    {readingSummary.label} · verified against this asset&rsquo;s computed
+                    factors · saved for forecast revision {readingSummary.forecast_revision}
+                  </p>
+                </>
+              ) : (
+                <p role="status" className="text-[13px] text-muted">
+                  Reading the stored summary…
+                </p>
+              )}
+            </div>
+            <div className="flex justify-end border-t border-line p-3">
+              <DialogClose asChild>
+                <Button variant="outline" size="sm" data-testid="summary-dialog-close">
+                  Close
+                </Button>
+              </DialogClose>
+            </div>
+          </DialogContent>
+        )}
+      </Dialog>
     </section>
   )
 }

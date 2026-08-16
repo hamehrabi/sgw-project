@@ -88,13 +88,14 @@ def _clock(issued_at: str | None) -> str:
         return "current"
 
 
-def call_model(figures: dict, config, *, transport=None) -> str:
+def call_model(figures: dict, config, *, transport=None, system_prompt=SYSTEM_PROMPT) -> str:
     """One request to the configured model. `transport` exists for the tests, which must
-    never reach a network — and for nothing else."""
+    never reach a network — and for nothing else. The asset path (CHG-059) passes its
+    own narrower instruction; everything else about the call is one code path."""
     body = {
         "model": config.openai_model,
         "messages": [
-            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "system", "content": system_prompt},
             {"role": "user", "content": json.dumps(figures)},
         ],
         "max_tokens": 400,
@@ -121,19 +122,35 @@ def call_model(figures: dict, config, *, transport=None) -> str:
 
 
 def _spent(connection: sqlite3.Connection, scenario_id: str) -> tuple[int, float]:
-    """(calls for this scenario, estimated USD this month) — from stored attempt counts."""
-    scenario_calls = connection.execute(
+    """(calls for this scenario, estimated USD this month) — from stored attempt counts.
+
+    Both drafting paths count (CHG-059): the situation summary and the per-asset
+    summaries draw on one budget, so neither can spend what the other was allowed.
+    """
+
+    def _count(sql: str, params: tuple) -> int:
+        return int(connection.execute(sql, params).fetchone()["n"])
+
+    scenario_calls = _count(
         "select coalesce(sum(json_extract(verification, '$.model_attempts')), 0) as n"
         " from summaries where scenario_id = ?",
         (scenario_id,),
-    ).fetchone()["n"]
+    ) + _count(
+        "select coalesce(sum(json_extract(verification, '$.model_attempts')), 0) as n"
+        " from asset_summaries where scenario_id = ?",
+        (scenario_id,),
+    )
     month = datetime.now(UTC).strftime("%Y-%m")
-    monthly_calls = connection.execute(
+    monthly_calls = _count(
         "select coalesce(sum(json_extract(verification, '$.model_attempts')), 0) as n"
         " from summaries where drafted_at like ?",
         (f"{month}%",),
-    ).fetchone()["n"]
-    return int(scenario_calls), float(monthly_calls) * EST_COST_PER_CALL_USD
+    ) + _count(
+        "select coalesce(sum(json_extract(verification, '$.model_attempts')), 0) as n"
+        " from asset_summaries where created_at like ?",
+        (f"{month}%",),
+    )
+    return scenario_calls, float(monthly_calls) * EST_COST_PER_CALL_USD
 
 
 def draft_summary(

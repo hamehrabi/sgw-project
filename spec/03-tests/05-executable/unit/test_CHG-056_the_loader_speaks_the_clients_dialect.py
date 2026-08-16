@@ -9,7 +9,6 @@ loader's only failure is a **named** `LoadFailed`.
 """
 
 import pytest
-
 from app.loader.load import load_scenario
 from app.loader.records import LoadFailed
 

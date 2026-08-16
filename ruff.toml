@@ -22,6 +22,10 @@ ignore = [
 # acceptance-criterion-6 test must assert against the DATABASE, not the service layer.
 "spec/03-tests/**" = ["S105", "S106", "S608"]
 
+# The Delia-dialect fixture embeds CSV rows as bytes, and a CSV row is one line by
+# definition — wrapping it to satisfy a width rule would change the bytes under test.
+"spec/03-tests/05-executable/unit/test_CHG-056_the_loader_speaks_the_clients_dialect.py" = ["E501"]
+
 # The browser harness seeds fixture accounts, so it holds a fixture password by design — and
 # `PASSWORD_HASH_COST` trips the same rule for having "PASSWORD" in its name while being a
 # cost factor. Scoped to this one file rather than switched off, so a real credential

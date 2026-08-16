@@ -19,16 +19,20 @@ export function Headline({
   movement: Movement | null
 }) {
   const high = ranking.items.filter((item) => item.band === 'High').length
+  const total = ranking.items.length
 
   return (
     <div data-testid="planning-headline">
-      <h1 className="text-[26px] font-semibold leading-tight tracking-tight">
+      <h1 className="text-[26px] font-semibold leading-tight tracking-tight tabular-nums">
         {high === 0
-          ? 'No assets are at high risk at the current forecast.'
-          : high === 1
-            ? '1 asset is at high risk at the current forecast.'
-            : `${high} assets are at high risk at the current forecast.`}
+          ? `No assets of ${total} are at high risk at the current forecast.`
+          : `${high} of ${total} assets ${high === 1 ? 'is' : 'are'} at high risk at the current forecast.`}
       </h1>
+      {movement?.first_ranking && (
+        <p className="mt-1 text-[15px] font-medium leading-snug text-muted">
+          This is the first scoring run for this scenario.
+        </p>
+      )}
       {movement && !movement.first_ranking && movement.moved_up_high > 0 && (
         <p className="mt-1 text-[20px] font-medium leading-snug text-muted">
           {movement.moved_up_high} of them moved up since {movement.previous_label}.

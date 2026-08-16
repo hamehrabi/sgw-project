@@ -21,10 +21,11 @@
  * that wins, rather than the last response.
  */
 
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import {
   AssetPage,
+  AssetSummary,
   Movement,
   Ranking,
   RiskItem,
@@ -53,6 +54,7 @@ import { RiskMap } from './RiskMap'
 import { ScenarioIntegrityNotice } from './ScenarioIntegrityNotice'
 import { ScenarioUploadPanel } from './ScenarioUploadPanel'
 import { StalenessBanner } from './StalenessBanner'
+import { TopRiskStrip } from './TopRiskStrip'
 import type { Surface } from './AppShell'
 
 type Panel = 'loading' | 'ready' | 'error'
@@ -78,6 +80,9 @@ export function ScenarioView({
   const [page, setPage] = useState<AssetPage | null>(null)
   const [ranking, setRanking] = useState<Ranking | null>(null)
   const [movement, setMovement] = useState<Movement | null>(null)
+  // Every stored per-asset summary for this storm (CHG-059) — read with the ranking, so
+  // a summary generated last session opens without a request, let alone an inference.
+  const [storedSummaries, setStoredSummaries] = useState<AssetSummary[]>([])
   const [assetState, setAssetState] = useState<Panel>('ready')
   const [rankingState, setRankingState] = useState<Panel>('ready')
   // Which forecast revision is on screen. `null` means "whichever is current".
@@ -92,11 +97,12 @@ export function ScenarioView({
     const mine = (generation.current += 1)
     setAssetState('loading')
     setRankingState('loading')
-    const [detail, assets, risks, moved] = await Promise.allSettled([
+    const [detail, assets, risks, moved, summaries] = await Promise.allSettled([
       scenarios.read(id),
       scenarios.assets(id),
       scenarios.risks(id, revision ?? undefined),
       insights.movement(id),
+      insights.assetSummaries(id),
     ])
     // A newer storm or revision was chosen while these were in flight (REQ-F-010).
     if (generation.current !== mine) return
@@ -105,6 +111,7 @@ export function ScenarioView({
     if (assets.status === 'fulfilled') setPage(assets.value)
     setRanking(risks.status === 'fulfilled' ? risks.value : null)
     setMovement(moved.status === 'fulfilled' ? moved.value : null)
+    setStoredSummaries(summaries.status === 'fulfilled' ? summaries.value.items : [])
     setAssetState(assets.status === 'fulfilled' ? 'ready' : 'error')
     setRankingState(risks.status === 'fulfilled' ? 'ready' : 'error')
   }, [])
@@ -116,6 +123,7 @@ export function ScenarioView({
     setPage(null)
     setRanking(null)
     setMovement(null)
+    setStoredSummaries([])
     setViewing(null)
     setOpenAsset(null)
     setTriaging(false)
@@ -126,6 +134,26 @@ export function ScenarioView({
   useEffect(() => {
     if (scenarioId) void read(scenarioId, viewing)
   }, [scenarioId, viewing, read])
+
+  // The stored summaries for the revision on screen, keyed by asset (CHG-059) — the
+  // table's popup and the drawer read from one map, so they can never disagree.
+  const summariesOnScreen = useMemo(() => {
+    const map = new Map<string, AssetSummary>()
+    const revision = ranking?.forecast_revision
+    if (revision === undefined) return map
+    for (const summary of storedSummaries) {
+      if (summary.forecast_revision === revision) map.set(summary.asset_id, summary)
+    }
+    return map
+  }, [storedSummaries, ranking?.forecast_revision])
+
+  const keepSummary = useCallback((summary: AssetSummary) => {
+    setStoredSummaries((current) =>
+      current.some((held) => held.asset_summary_id === summary.asset_summary_id)
+        ? current
+        : [...current, summary],
+    )
+  }, [])
 
   // ---- Load surface -----------------------------------------------------------------
 
@@ -201,6 +229,11 @@ export function ScenarioView({
         <Headline ranking={ranking} movement={movement} />
       )}
 
+      {/* The answer first (CHG-057): who is most exposed right now, and why in one line. */}
+      {ranking && rankingState === 'ready' && (
+        <TopRiskStrip ranking={ranking} onReview={setOpenAsset} />
+      )}
+
       {ranking && rankingState === 'ready' && (
         <MovementStrip movement={movement} ranking={ranking} onReview={setOpenAsset} />
       )}
@@ -218,9 +251,12 @@ export function ScenarioView({
       <div className="grid gap-6 xl:grid-cols-[1fr_300px]">
         <div className="min-w-0 space-y-5">
           <RiskList
+            scenarioId={scenarioId}
             ranking={ranking}
             state={rankingState}
             movement={movement}
+            summaries={summariesOnScreen}
+            onSummaryStored={keepSummary}
             onOpenAsset={setOpenAsset}
             onStartTriage={() => setTriaging(true)}
           />
@@ -267,6 +303,7 @@ export function ScenarioView({
         scenarioId={scenarioId}
         forecastRevision={ranking?.forecast_revision ?? 0}
         item={openAsset}
+        summary={openAsset ? (summariesOnScreen.get(openAsset.asset_id) ?? null) : null}
         onClose={() => setOpenAsset(null)}
         onRecorded={() => undefined}
       />

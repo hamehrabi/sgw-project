@@ -76,25 +76,34 @@ export function ForecastRevisionControl({
 
   return (
     <section className="rounded-card border border-line bg-rail p-3 text-[13px]" data-testid="forecast-revisions">
-      <div>
+      {/* CHG-057: one line, not a wall. The current revision, the one action, and the
+          pending count — everything else waits behind the disclosure below. */}
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
         <strong>Forecast revision {scenario.forecast_revision}</strong>
-        {viewing !== scenario.forecast_revision && (
-          <span data-testid="viewing-earlier">
-            {' '}
-            — you are reading revision {viewing}, kept for comparison. It has not changed.
+        <button
+          type="button"
+          onClick={apply}
+          disabled={state === 'applying' || nothingFurther}
+          data-testid="apply-forecast"
+          className="inline-flex h-8 items-center rounded-card border border-line bg-background px-3 text-[13px] font-medium hover:bg-panel disabled:pointer-events-none disabled:opacity-50"
+        >
+          {state === 'applying' ? 'Re-ranking…' : 'Apply the next forecast change'}
+        </button>
+        {/* The unapplied forecasts are still stated — CHG-027's point stands: a forecast
+            that is coming is a real fact. Stated as a count, the size the fact deserves. */}
+        {pending.length > 0 && (
+          <span className="text-[12px] text-muted" data-testid="revisions-pending">
+            {pending.length} of this storm&rsquo;s {scenario.forecast_revisions.length} forecasts
+            not yet applied — the weather moves again.
           </span>
         )}
       </div>
 
-      <button
-        type="button"
-        onClick={apply}
-        disabled={state === 'applying' || nothingFurther}
-        data-testid="apply-forecast"
-        className="mt-2 inline-flex h-8 items-center rounded-card border border-line bg-background px-3 text-[13px] font-medium hover:bg-panel disabled:pointer-events-none disabled:opacity-50"
-      >
-        {state === 'applying' ? 'Re-ranking…' : 'Apply the next forecast change'}
-      </button>
+      {viewing !== scenario.forecast_revision && (
+        <p className="mt-2" data-testid="viewing-earlier">
+          You are reading revision {viewing}, kept for comparison. It has not changed.
+        </p>
+      )}
 
       {nothingFurther && (
         <p data-testid="no-further-forecast" className="mt-2 text-[12px] text-muted">
@@ -109,67 +118,53 @@ export function ForecastRevisionControl({
         </p>
       )}
 
-      {/* **Only the orders that exist are offered.**
-       *
-       * Every revision the prepared file carries used to be a row here, each unranked one
-       * repeating the same sentence. A storm with 48 forecasts drew 48 rows and 45 of them
-       * said *not applied yet* — a wall that buried the two or three orders a person can
-       * actually compare, on the screen they came to compare them on.
-       *
-       * The unapplied ones are still stated, because CHG-027's point stands: a forecast that
-       * is coming is a real fact and hiding it would misrepresent the storm. They are stated
-       * **as a count**, which is the same fact at the size it deserves. */}
-      {pending.length > 0 && (
-        <p className="mt-2 text-[12px] text-muted" data-testid="revisions-pending">
-          {pending.length} of this storm&rsquo;s {scenario.forecast_revisions.length} forecasts
-          have not been applied. They are listed because the weather moves again; each becomes
-          comparable only once it has an order behind it.
-        </p>
-      )}
-
-      {/* **Every revision the file carries stays on screen** — CHG-027's decision, and the
-        * reason is in ATEST-005: an operator wants to know the weather moves again, and only
-        * the revision with an order behind it can be selected.
-        *
-        * What changed is the shape, not the content. Each was a block of full sentences, so a
-        * storm carrying 48 forecasts drew 48 of them and buried the two or three orders a
-        * person can actually compare — on the screen they came to compare them on. They are
-        * chips now, wrapped, with the explanation stated once above and kept per-revision for
-        * anyone reading one on its own. */}
-      <ul className="mt-2 flex max-h-24 flex-wrap items-center gap-x-3 gap-y-1.5 overflow-y-auto pr-1">
-        {scenario.forecast_revisions.map((entry) => (
-          <li key={entry.forecast_revision}>
-            <button
-              type="button"
-              onClick={() => onView(entry.forecast_revision)}
-              // Not yet applied means there is no stored ranking to fetch. Disabled rather
-              // than hidden: the forecast is real and coming, and it is only the *comparison*
-              // that does not exist yet.
-              disabled={!entry.ranked}
-              aria-current={entry.forecast_revision === viewing}
-              title={`forecast for ${entry.valid_time}`}
-              className={
-                entry.forecast_revision === viewing
-                  ? 'inline-flex items-center rounded-full border border-teal bg-teal-soft px-2.5 py-0.5 text-[12px] font-medium text-teal-deep'
-                  : 'inline-flex items-center rounded-full border border-line bg-background px-2.5 py-0.5 text-[12px] hover:bg-panel disabled:opacity-50'
-              }
-              data-testid={`view-revision-${entry.forecast_revision}`}
-            >
-              Rev {entry.forecast_revision}
-              {entry.forecast_revision === scenario.forecast_revision && ' · current'}
-            </button>
-            <span className="ml-1 text-[11px] text-faint">{entry.valid_time}</span>
-            {!entry.ranked && (
-              <span
-                className="ml-1 text-[11px] italic text-faint"
-                data-testid={`revision-not-applied-${entry.forecast_revision}`}
+      {/* **Every revision the file carries stays reachable** — CHG-027's decision, one
+        * click deeper (CHG-057): the two or three comparable orders matter on the day a
+        * person comes back to compare, and the other twenty were burying the table the
+        * rest of the time. A revision without an order behind it is offered only as
+        * disabled, exactly as before — only the *comparison* does not exist yet. */}
+      <details className="mt-2" data-testid="forecast-history">
+        <summary
+          className="cursor-pointer text-[12px] font-medium text-teal-deep hover:underline"
+          data-testid="forecast-history-toggle"
+        >
+          Compare an earlier ranking
+        </summary>
+        <ul className="mt-2 flex max-h-24 flex-wrap items-center gap-x-3 gap-y-1.5 overflow-y-auto pr-1">
+          {scenario.forecast_revisions.map((entry) => (
+            <li key={entry.forecast_revision}>
+              <button
+                type="button"
+                onClick={() => onView(entry.forecast_revision)}
+                // Not yet applied means there is no stored ranking to fetch. Disabled rather
+                // than hidden: the forecast is real and coming, and it is only the *comparison*
+                // that does not exist yet.
+                disabled={!entry.ranked}
+                aria-current={entry.forecast_revision === viewing}
+                title={`forecast for ${entry.valid_time}`}
+                className={
+                  entry.forecast_revision === viewing
+                    ? 'inline-flex items-center rounded-full border border-teal bg-teal-soft px-2.5 py-0.5 text-[12px] font-medium text-teal-deep'
+                    : 'inline-flex items-center rounded-full border border-line bg-background px-2.5 py-0.5 text-[12px] hover:bg-panel disabled:opacity-50'
+                }
+                data-testid={`view-revision-${entry.forecast_revision}`}
               >
-                no order to compare
-              </span>
-            )}
-          </li>
-        ))}
-      </ul>
+                Rev {entry.forecast_revision}
+                {entry.forecast_revision === scenario.forecast_revision && ' · current'}
+              </button>
+              <span className="ml-1 text-[11px] text-faint">{entry.valid_time}</span>
+              {!entry.ranked && (
+                <span
+                  className="ml-1 text-[11px] italic text-faint"
+                  data-testid={`revision-not-applied-${entry.forecast_revision}`}
+                >
+                  no order to compare
+                </span>
+              )}
+            </li>
+          ))}
+        </ul>
+      </details>
     </section>
   )
 }

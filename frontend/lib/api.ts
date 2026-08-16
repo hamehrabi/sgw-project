@@ -413,13 +413,30 @@ export const scenarios = {
    * Omitting `forecastRevision` asks for the storm's current one. Passing an earlier value
    * returns that earlier ranking **unchanged** (AC-005); passing one the storm does not carry
    * is a 404 and never a quiet substitution of the current list.
+   *
+   * **The whole order, not the first page** (CHG-057): `next_cursor` is followed until the
+   * server says there is nothing further, so the screen paginates over the complete stored
+   * ranking rather than mistaking the server's page size for the storm's size.
    */
-  risks: (id: string, forecastRevision?: number) =>
-    request<Ranking>(
-      forecastRevision === undefined
-        ? `/api/v1/scenarios/${id}/risks`
-        : `/api/v1/scenarios/${id}/risks?forecast_revision=${forecastRevision}`,
-    ),
+  risks: async (id: string, forecastRevision?: number): Promise<Ranking> => {
+    const url = (cursor: string | null) => {
+      const params = new URLSearchParams({ limit: '500' })
+      if (forecastRevision !== undefined) params.set('forecast_revision', String(forecastRevision))
+      if (cursor) params.set('cursor', cursor)
+      return `/api/v1/scenarios/${id}/risks?${params.toString()}`
+    }
+    const first = await request<Ranking>(url(null))
+    const items = [...first.items]
+    let cursor = first.next_cursor
+    // The guard is a tripwire, not a truncation: 40 pages of 500 is far past demo scale,
+    // and a cursor loop that never ends would otherwise hang the screen silently.
+    for (let follows = 0; cursor && follows < 40; follows += 1) {
+      const page = await request<Ranking>(url(cursor))
+      items.push(...page.items)
+      cursor = page.next_cursor
+    }
+    return { ...first, items, next_cursor: null }
+  },
 
   /**
    * Apply the storm's next forecast change and re-rank (REQ-F-004). A write that produces a
@@ -610,6 +627,23 @@ export interface Summary {
   approved_at: string | null
 }
 
+/**
+ * One asset's stored summary (CHG-059). Phrased once per (asset, forecast revision),
+ * stored, and read back without inference — the label always says which path wrote it.
+ */
+export interface AssetSummary {
+  asset_summary_id: string
+  scenario_id: string
+  asset_id: string
+  forecast_revision: number
+  text: string
+  label: 'Phrased from computed factors' | 'Assembled from computed factors'
+  source_figures: Record<string, unknown>
+  verification: { ok: boolean; entries: SummaryVerificationEntry[] }
+  created_at: string
+  created_by: string
+}
+
 export interface ActivityEntry {
   kind: 'human' | 'system'
   text: string
@@ -680,6 +714,23 @@ export const insights = {
     request<Summary>(`/api/v1/scenarios/${id}/summary/send`, {
       method: 'POST',
       body: JSON.stringify({ summary_id: summaryId }),
+    }),
+
+  /** Every stored per-asset summary for this storm. A read — nothing can regenerate. */
+  assetSummaries: (id: string) =>
+    request<{ scenario_id: string; items: AssetSummary[]; total: number }>(
+      `/api/v1/scenarios/${id}/asset-summaries`,
+    ),
+
+  /**
+   * The summary for one (asset, revision) — generated on first ask, the stored row on
+   * every ask after (CHG-059). The guardrail is the server's; what comes back has
+   * already been verified against the asset's own computed factors.
+   */
+  generateAssetSummary: (id: string, assetId: string, forecastRevision: number) =>
+    request<AssetSummary>(`/api/v1/scenarios/${id}/asset-summaries`, {
+      method: 'POST',
+      body: JSON.stringify({ asset_id: assetId, forecast_revision: forecastRevision }),
     }),
 
   activity: (id: string) =>

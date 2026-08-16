@@ -12,6 +12,9 @@ import { expect, Page, test } from '@playwright/test'
  *     the violation named, and the honest text goes through to Sent.
  *  3. The match queue shows both sides of a withheld merge and M resolves it.
  *  4. "Use sample storm data" loads through the same parse path as an upload.
+ *  5. The planning screen opens with the answer, pages the ranking, maps the assets
+ *     (CHG-057, CHG-058).
+ *  6. An asset summary is phrased once, stored, and shown in popup and drawer (CHG-059).
  */
 
 const FIXTURE = path.resolve(
@@ -128,4 +131,66 @@ test('the sample button loads a storm through the same parse path', async ({ pag
   // Through the quality summary and the door — a real ranking behind it, not a shortcut.
   await page.getByTestId('finish-continue').click()
   await expect(page.getByTestId('risk-list')).toBeVisible()
+})
+
+test('the planning screen opens with the answer, pages the ranking, and maps the assets', async ({
+  page,
+}) => {
+  await loadedStorm(page)
+  await page.getByTestId('finish-continue').click()
+  await expect(page.getByTestId('risk-list')).toBeVisible()
+
+  // The answer first (CHG-057): real counts in the headline, the top cards beneath it,
+  // each carrying its strongest computed reason and a Review door into the drawer.
+  await expect(page.getByTestId('planning-headline')).toContainText(
+    'at high risk at the current forecast',
+  )
+  await expect(page.getByTestId('top-risk-strip')).toBeVisible()
+  await expect(page.getByTestId('top-risk-card').first()).toBeVisible()
+  await page.getByTestId('top-risk-card').first().getByRole('button', { name: 'Review' }).click()
+  await expect(page.getByTestId('asset-sheet')).toBeVisible()
+  await page.keyboard.press('Escape')
+
+  // The forecast wall is one line now; the comparison waits behind its disclosure.
+  await expect(page.getByTestId('forecast-history-toggle')).toBeVisible()
+
+  // Pagination (CHG-057): page context stated, size selectable, previous honest about
+  // there being nothing before page one.
+  await expect(page.getByTestId('risk-pagination')).toContainText('ranked')
+  await page.getByTestId('per-page-25').click()
+  await expect(page.getByTestId('per-page-25')).toHaveAttribute('aria-pressed', 'true')
+  await expect(page.getByTestId('page-previous')).toBeDisabled()
+
+  // The map (CHG-058): a real Leaflet pane and the mapped count — no key anywhere.
+  await expect(page.getByTestId('risk-map')).toBeVisible()
+  await expect(page.locator('[data-testid="risk-map"] .leaflet-container')).toBeVisible()
+  await expect(page.getByTestId('map-count')).toContainText('mapped')
+})
+
+test('an asset summary is phrased once, shown in a popup, and shown in the drawer', async ({
+  page,
+}) => {
+  await loadedStorm(page)
+  await page.getByTestId('finish-continue').click()
+  await expect(page.getByTestId('risk-list')).toBeVisible()
+
+  // The popup (CHG-059). The model is off in this harness, so the label must say the
+  // computed factors wrote it — and the verification already happened server-side.
+  await page.getByTestId('asset-summary-button').first().click()
+  const dialog = page.getByTestId('summary-dialog')
+  await expect(dialog).toBeVisible()
+  await expect(dialog).toContainText('Assembled from computed factors')
+  await page.getByTestId('summary-dialog-close').click()
+  await expect(dialog).toHaveCount(0)
+
+  // The same asset's drawer shows the stored summary — one map feeds both, and nothing
+  // re-infers on read.
+  await page
+    .locator('[data-testid="risk-list"] tbody tr')
+    .first()
+    .locator('td:nth-child(2) button')
+    .first()
+    .click()
+  await expect(page.getByTestId('sheet-summary')).toBeVisible()
+  await expect(page.getByTestId('sheet-summary')).toContainText('Assembled from computed factors')
 })

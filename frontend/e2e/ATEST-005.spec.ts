@@ -121,6 +121,8 @@ test('applying the change re-ranks the list, and the previous order is one butto
 
   // The second half, and the one `test-specification.md` names as this test's risk: *"a
   // re-rank destroying the order a decision was made against."*
+  // CHG-057: the comparison chips wait behind a disclosure now — open it first.
+  await page.getByTestId('forecast-history-toggle').click()
   await page.getByTestId('view-revision-0').click()
   await expect(page.getByTestId('viewing-earlier')).toContainText('It has not changed')
   await expectTheRankingIsReadable(page)

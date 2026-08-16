@@ -89,10 +89,19 @@ export function CrewStagingPlan({
     <Card data-testid="crew-staging">
       <CardHeader>
         <CardTitle>Crew staging plan</CardTitle>
+        <p className="text-[12px] leading-relaxed text-muted">
+          Where your crews wait before the storm arrives. Set a count per depot with the
+          + and − controls, then <strong>Record plan</strong> — the plan becomes the crew
+          total the Dispatch Board and the situation summary state, so those figures have
+          an author instead of an assumption.
+        </p>
         <p className="text-[12px] text-muted">
           {plan.high_risk_count} asset(s) rated High in the current ranking — context, not
           a recommendation. The counts are yours.
         </p>
+        {plan.recorded_at && (
+          <p className="text-[11px] text-faint">Last recorded {plan.recorded_at}.</p>
+        )}
       </CardHeader>
       <CardContent className="space-y-2.5">
         {plan.depots.map((depot) => (

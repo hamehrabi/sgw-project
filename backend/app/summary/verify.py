@@ -84,6 +84,13 @@ _GRAMMAR = frozenset(
     )
 )
 
+# The per-asset path's one recorded difference (CHG-059): a gust reason legitimately
+# states the gust in mph, so `mph` cannot be forbidden there — the figure check is the
+# guard that pins every stated number to a supplied value. Everything else stays banned.
+ASSET_FORBIDDEN_VOCABULARY = tuple(
+    term for term in FORBIDDEN_VOCABULARY if term != "mph"
+)
+
 _NUMBER = re.compile(r"\d[\d,]*(?:\.\d+)?")
 _TIME = re.compile(r"^\d{1,2}[:.]\d{2}$")
 _CAP_RUN = re.compile(r"(?:[A-Z][A-Za-z'’\-]+)(?:\s+[A-Z][A-Za-z'’\-]+)*")
@@ -112,7 +119,12 @@ def _sentence_starts(text: str) -> set[int]:
     return starts
 
 
-def verify(text: str, figures: dict) -> dict:
+def verify_asset(text: str, figures: dict) -> dict:
+    """CHG-059: the per-asset path — the same judge, with `mph` speakable."""
+    return verify(text, figures, forbidden=ASSET_FORBIDDEN_VOCABULARY)
+
+
+def verify(text: str, figures: dict, *, forbidden=FORBIDDEN_VOCABULARY) -> dict:
     """Judge one draft. Returns {'ok': bool, 'entries': [...]} — every extracted claim,
     each with its verdict, so the review drawer can render the whole table."""
     entries: list[dict] = []
@@ -181,7 +193,7 @@ def verify(text: str, figures: dict) -> dict:
             )
 
     # (c) forbidden vocabulary ----------------------------------------------------------
-    for term in FORBIDDEN_VOCABULARY:
+    for term in forbidden:
         if re.search(rf"\b{re.escape(term)}\b", lowered):
             entries.append(
                 {"kind": "vocabulary", "token": term, "allowed": False,

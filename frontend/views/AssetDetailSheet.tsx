@@ -23,7 +23,7 @@ import { Button } from '@/components/ui/button'
 import { Label, Textarea } from '@/components/ui/field'
 import { Sheet, SheetContent } from '@/components/ui/sheet'
 import { cn } from '@/lib/utils'
-import { insights, RequestFailed, RiskItem } from '@/lib/api'
+import { AssetSummary, insights, RequestFailed, RiskItem } from '@/lib/api'
 
 /** Confidence in words, derived from what the inputs actually are: an estimated or old
  *  condition reading weakens the claim, and the sentence says so instead of a number. */
@@ -38,12 +38,16 @@ export function AssetDetailSheet({
   scenarioId,
   forecastRevision,
   item,
+  summary,
   onClose,
   onRecorded,
 }: {
   scenarioId: string
   forecastRevision: number
   item: RiskItem | null
+  /** The stored summary for this asset at the revision on screen, when one exists
+   *  (CHG-059). Read from the store by the parent — opening the drawer infers nothing. */
+  summary?: AssetSummary | null
   onClose: () => void
   onRecorded: () => void
 }) {
@@ -167,6 +171,19 @@ export function AssetDetailSheet({
                     </li>
                   ))}
                 </ul>
+              </section>
+            )}
+
+            {summary && (
+              <section data-testid="sheet-summary">
+                <h3 className="mb-2 text-[14px] font-semibold">Summary</h3>
+                <p className="whitespace-pre-line text-[13px] leading-relaxed">
+                  {summary.text}
+                </p>
+                <p className="mt-1.5 text-[11px] text-muted">
+                  {summary.label} · verified against this asset&rsquo;s computed factors ·
+                  saved for forecast revision {summary.forecast_revision}
+                </p>
               </section>
             )}
 
