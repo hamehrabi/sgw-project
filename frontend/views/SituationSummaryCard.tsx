@@ -77,9 +77,13 @@ export function SituationSummaryCard({
         <CardHeader className="flex-row items-center justify-between">
           <div className="flex items-center gap-2.5">
             <CardTitle>Situation summary</CardTitle>
-            {summary && (
+            {summary ? (
               <Badge variant={STATE_VARIANT[summary.state]} data-testid="summary-state">
                 {summary.state}
+              </Badge>
+            ) : (
+              <Badge variant="neutral" data-testid="summary-state">
+                Not drafted
               </Badge>
             )}
           </div>

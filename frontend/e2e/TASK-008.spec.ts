@@ -76,7 +76,9 @@ test('one press clears a false alarm, and the job it was filed at stays on the b
   // One action: no confirmation dialog, no second screen. The report leaves the working list.
   await expect(job.getByTestId('job-report')).toHaveCount(0)
   // And the job is still there, still named, reading *explained* rather than *empty* — nothing
-  // was dispatched and nothing was cancelled (BR-001, CHG-020).
+  // was dispatched and nothing was cancelled (BR-001, CHG-020). With every report dismissed
+  // it files under Closed / dismissed (CHG-063's tabs) — still on the board, one tab over.
+  await page.getByTestId('queue-tab-closed').click()
   await expect(job).toHaveCount(1)
   await expect(job.getByTestId('job-dismissed')).toContainText('1 dismissed as a false alarm')
   await expect(job.getByTestId('job-location')).toHaveText('Kilnwick')

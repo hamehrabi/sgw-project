@@ -219,3 +219,48 @@ test('a visitor signs up and lands in the app as an operator', async ({ page }) 
   // was no field through which the form could have asked for another.
   await expect(page.getByTestId('role')).toHaveText('operator')
 })
+
+test('the worklist assigns, restores and reopens — recorded, never dispatched', async ({
+  page,
+}) => {
+  await loadedStorm(page)
+  await page.getByRole('button', { name: 'Dispatch Board' }).click()
+  await expect(page.getByTestId('dispatch-board')).toBeVisible()
+
+  // A job exists only because a person filed a report (AC-007's first half).
+  await page.getByLabel('Report damage in a neighbourhood').fill('Causeway Flats')
+  await page.getByRole('button', { name: 'Add report' }).click()
+  const job = page.getByTestId('job').filter({
+    has: page.getByText('Causeway Flats', { exact: true }),
+  })
+  await expect(job).toHaveCount(1)
+  await expect(page.getByText('next up')).toBeVisible()
+
+  // Assign: a dialog, a crew label, a record — and the notice says nothing was sent.
+  await job.getByTestId('assign-crew').click()
+  await page.getByLabel('Crew', { exact: true }).fill('Line crew 2')
+  await page.getByTestId('assign-submit').click()
+  await expect(page.getByTestId('queue-notice')).toContainText('Assigned Line crew 2')
+  await expect(page.getByTestId('queue-notice')).toContainText('no message left the platform')
+
+  // The job moved to the Assigned tab, carrying its crew.
+  await page.getByTestId('queue-tab-assigned').click()
+  await expect(job).toHaveCount(1)
+  await expect(job).toContainText('Line crew 2')
+
+  // Restored, then reopened — a state machine, each step recorded.
+  await job.getByTestId('mark-restored').click()
+  await page.getByTestId('queue-tab-closed').click()
+  await expect(job.getByTestId('reopen-job')).toBeVisible()
+  await job.getByTestId('reopen-job').click()
+  await page.getByTestId('queue-tab-assigned').click()
+  await expect(job).toHaveCount(1)
+
+  // The rail phrases all of it as human acts — never "generated", never "auto".
+  const rail = page.getByTestId('activity-rail')
+  await expect(rail).toContainText('assigned Line crew 2 to the job at Causeway Flats')
+  await expect(rail).toContainText('restored')
+  await expect(rail).toContainText('reopened')
+  await expect(rail).not.toContainText('generated')
+  await expect(rail).not.toContainText('auto-')
+})

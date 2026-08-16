@@ -13,8 +13,8 @@ import json
 from fastapi import APIRouter, Request
 
 from app.api import errors, views
+from app.store import dispatch, scenarios, security
 from app.store import movement as movement_store
-from app.store import scenarios, security
 
 router = APIRouter(prefix="/api/v1/scenarios", tags=["activity"])
 
@@ -145,6 +145,19 @@ async def read_activity(request: Request, scenario_id: str):
                     "occurred_at": row["approved_at"],
                 }
             )
+
+    # The worklist's three actions (CHG-063) — human acts about a job, phrased with the
+    # neighbourhood the job answers (CHG-020's rule for where a job *is*).
+    for row in dispatch.recent_job_actions(connection, scenario_id, FEED_LIMIT):
+        actor = names.get(row["actor_user_id"], "Somebody")
+        where = row["neighbourhood"] or "an unnamed location"
+        if row["action"] == "assign":
+            text = f"{actor} assigned {row['crew']} to the job at {where}"
+        elif row["action"] == "restore":
+            text = f"{actor} marked the job at {where} restored"
+        else:
+            text = f"{actor} reopened the job at {where}"
+        entries.append({"kind": "human", "text": text, "occurred_at": row["occurred_at"]})
 
     # Access-control events from the queryable log (CHG-046). Global rather than
     # scenario-scoped — a sign-in is context for every storm on screen.

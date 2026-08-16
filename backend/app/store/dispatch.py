@@ -376,3 +376,79 @@ def open_reports_in_area(connection, scenario_id, key) -> int:
         " and reports.status = 'open'",
         (scenario_id, key),
     ).fetchone()[0]
+
+
+def find_job(connection, job_id) -> sqlite3.Row | None:
+    return connection.execute(
+        "select * from repair_jobs where id = ?", (job_id,)
+    ).fetchone()
+
+
+def record_job_action(
+    connection, *, job, action, actor_user_id, crew: str | None = None
+) -> sqlite3.Row:
+    """One dispatch action (CHG-063): the job's status moves and the row is appended,
+    in one transaction. **A record about a job, never an instruction** — no message
+    leaves the platform, and BR-001 has no exception here.
+
+    The status machine is the caller's to guard; this writes what was decided.
+    """
+    now = _now()
+    if action == "assign":
+        connection.execute(
+            "update repair_jobs set assigned_to = ?, status = 'in_progress',"
+            " updated_at = ? where id = ?",
+            (crew, now, job["id"]),
+        )
+    elif action == "restore":
+        connection.execute(
+            "update repair_jobs set status = 'done', updated_at = ? where id = ?",
+            (now, job["id"]),
+        )
+    else:  # reopen — the crew note survives, so the status follows it (CHG-063)
+        connection.execute(
+            "update repair_jobs set status = ?, updated_at = ? where id = ?",
+            ("in_progress" if job["assigned_to"] else "pending", now, job["id"]),
+        )
+
+    action_id = f"DA-{uuid.uuid4().hex[:12]}"
+    try:
+        connection.execute(
+            "insert into dispatch_actions"
+            " (id, scenario_id, repair_job_id, action, crew, actor_user_id, occurred_at,"
+            "  seq)"
+            " values (?, ?, ?, ?, ?, ?, ?,"
+            " (select coalesce(max(seq), 0) + 1 from dispatch_actions"
+            "  where scenario_id = ?))",
+            (
+                action_id,
+                job["scenario_id"],
+                job["id"],
+                action,
+                crew,
+                actor_user_id,
+                now,
+                job["scenario_id"],
+            ),
+        )
+        connection.commit()
+    except Exception:
+        connection.rollback()
+        raise
+    return connection.execute(
+        "select * from dispatch_actions where id = ?", (action_id,)
+    ).fetchone()
+
+
+def recent_job_actions(connection, scenario_id, limit) -> list[sqlite3.Row]:
+    """The feed's slice, each action carrying the neighbourhood of its job's first-ever
+    report — CHG-020's rule for where a job *is*, applied to how it is spoken about."""
+    return connection.execute(
+        "select da.*,"
+        " (select json_extract(r.location, '$.neighbourhood') from damage_reports r"
+        "  where r.repair_job_id = da.repair_job_id order by r.seq limit 1)"
+        "  as neighbourhood"
+        " from dispatch_actions da where da.scenario_id = ?"
+        " order by da.seq desc limit ?",
+        (scenario_id, limit),
+    ).fetchall()

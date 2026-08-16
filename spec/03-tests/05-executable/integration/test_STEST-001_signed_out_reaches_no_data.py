@@ -28,6 +28,10 @@ DATA_ROUTES = [
     ("POST", "/api/v1/scenarios/SCEN-1/placements"),
     ("POST", "/api/v1/recommendations/REC-1/decision"),
     ("POST", "/api/v1/damage-reports/DR-1/dismiss"),
+    # The worklist's three actions (CHG-063): records about a job, all guarded.
+    ("POST", "/api/v1/repair-jobs/RJ-1/assign"),
+    ("POST", "/api/v1/repair-jobs/RJ-1/restore"),
+    ("POST", "/api/v1/repair-jobs/RJ-1/reopen"),
     # The interface rebuild's nine capabilities (CHG-040..CHG-054). Every one is data or
     # a decision about data, so every one is behind the guard, and every one is named
     # here because the enumeration below fails this file the day one is added unnamed.
@@ -63,7 +67,7 @@ PUBLIC = {
     ("DELETE", "/api/v1/auth/session"),
 }
 
-IDENTIFIERS = {"SCEN-1", "REC-1", "DR-1"}
+IDENTIFIERS = {"SCEN-1", "REC-1", "DR-1", "RJ-1"}
 
 
 def shape(path: str) -> str:

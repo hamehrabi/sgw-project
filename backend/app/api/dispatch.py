@@ -24,6 +24,7 @@ from pydantic import BaseModel, ConfigDict
 from app.api import errors, views
 from app.api.events import log_event
 from app.store import dispatch, scenarios
+from app.store.blanks import is_blank, trim
 
 router = APIRouter(prefix="/api/v1/scenarios", tags=["dispatch"])
 
@@ -142,3 +143,110 @@ async def read_board(request: Request, scenario_id: str):
 
     jobs, reports = dispatch.board(connection, scenario_id)
     return views.board_body(scenario_id, jobs, reports)
+
+
+# --- The worklist's three actions (CHG-063) --------------------------------------------
+#
+# Records about a job, never instructions: nothing here sends anything anywhere (BR-001).
+# Each moves the status machine one legal step and appends a dispatch_actions row; an
+# illegal step is a 409, because "mark restored" pressed twice is a conflict, not a retry.
+
+jobs_router = APIRouter(prefix="/api/v1/repair-jobs", tags=["dispatch"])
+
+CREW_MAX = 120
+
+
+class Assignment(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    crew: str
+
+
+def _job_or_none(request: Request, job_id: str):
+    return dispatch.find_job(request.app.state.db, job_id)
+
+
+def _action_body(row) -> dict:
+    return {
+        "action_id": row["id"],
+        "repair_job_id": row["repair_job_id"],
+        "action": row["action"],
+        "crew": row["crew"],
+        "occurred_at": row["occurred_at"],
+    }
+
+
+@jobs_router.post("/{job_id}/assign", status_code=200)
+async def assign_crew(request: Request, job_id: str, body: Assignment):
+    connection = request.app.state.db
+    job = _job_or_none(request, job_id)
+    if job is None:
+        return errors.error(404, "not_found", "That repair job could not be found.")
+    if job["status"] == "done":
+        return errors.error(
+            409, "job_restored", "That job is marked restored — reopen it first."
+        )
+
+    # The shared alphabet decides blank (CHG-023), and the bound is stated in the refusal.
+    crew = trim(body.crew)
+    if is_blank(body.crew) or len(crew) > CREW_MAX:
+        return errors.error(
+            400, "validation_error", f"A crew label is 1 to {CREW_MAX} characters."
+        )
+
+    row = dispatch.record_job_action(
+        connection, job=job, action="assign",
+        actor_user_id=request.state.user["id"], crew=crew,
+    )
+    log_event(
+        "JOB_CREW_ASSIGNED",
+        user_id=request.state.user["id"],
+        scenario_id=job["scenario_id"],
+        job_id=job_id,
+        outcome="recorded",
+    )
+    return _action_body(row)
+
+
+@jobs_router.post("/{job_id}/restore", status_code=200)
+async def mark_restored(request: Request, job_id: str):
+    connection = request.app.state.db
+    job = _job_or_none(request, job_id)
+    if job is None:
+        return errors.error(404, "not_found", "That repair job could not be found.")
+    if job["status"] == "done":
+        return errors.error(409, "already_restored", "That job is already marked restored.")
+
+    row = dispatch.record_job_action(
+        connection, job=job, action="restore", actor_user_id=request.state.user["id"]
+    )
+    log_event(
+        "JOB_RESTORED",
+        user_id=request.state.user["id"],
+        scenario_id=job["scenario_id"],
+        job_id=job_id,
+        outcome="recorded",
+    )
+    return _action_body(row)
+
+
+@jobs_router.post("/{job_id}/reopen", status_code=200)
+async def reopen(request: Request, job_id: str):
+    connection = request.app.state.db
+    job = _job_or_none(request, job_id)
+    if job is None:
+        return errors.error(404, "not_found", "That repair job could not be found.")
+    if job["status"] != "done":
+        return errors.error(409, "not_restored", "That job is not marked restored.")
+
+    row = dispatch.record_job_action(
+        connection, job=job, action="reopen", actor_user_id=request.state.user["id"]
+    )
+    log_event(
+        "JOB_REOPENED",
+        user_id=request.state.user["id"],
+        scenario_id=job["scenario_id"],
+        job_id=job_id,
+        outcome="recorded",
+    )
+    return _action_body(row)

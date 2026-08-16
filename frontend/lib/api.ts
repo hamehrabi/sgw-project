@@ -387,6 +387,27 @@ export const dispatch = {
       }),
     }),
 
+  /** CHG-063: records who owns a job. Nothing is sent to anyone — no path exists (BR-001). */
+  assignCrew: (jobId: string, crew: string) =>
+    request<{ action_id: string; repair_job_id: string; action: string; crew: string }>(
+      `/api/v1/repair-jobs/${jobId}/assign`,
+      { method: 'POST', body: JSON.stringify({ crew }) },
+    ),
+
+  /** CHG-063: records that service is back. The job moves to Restored; nothing else moves. */
+  markRestored: (jobId: string) =>
+    request<{ action_id: string; repair_job_id: string; action: string }>(
+      `/api/v1/repair-jobs/${jobId}/restore`,
+      { method: 'POST', body: JSON.stringify({}) },
+    ),
+
+  /** CHG-063: a restored job that was not — back on the worklist, recorded as a reopen. */
+  reopenJob: (jobId: string) =>
+    request<{ action_id: string; repair_job_id: string; action: string }>(
+      `/api/v1/repair-jobs/${jobId}/reopen`,
+      { method: 'POST', body: JSON.stringify({}) },
+    ),
+
   /**
    * Clear a false alarm. **One action, and never anonymous** (REQ-F-008): the reason travels
    * with the request and who dismissed it comes from the session, so there is no shape of this

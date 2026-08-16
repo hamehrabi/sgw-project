@@ -126,7 +126,8 @@ test('the board says nothing is dispatched and carries no rank or score', async 
   await expect(board).toContainText('Adding a report sends nobody anywhere')
   await expect(board).toContainText('never a street or a household')
   const job = jobAt(page, 'Fen End')
-  await expect(job).toContainText('pending')
+  // CHG-063: the status is a word a dispatcher uses, not a database value.
+  await expect(job).toContainText('Open')
   await expect(job).not.toContainText('High')
   await expect(job).not.toContainText('Medium')
   await expect(job).not.toContainText('Rank')

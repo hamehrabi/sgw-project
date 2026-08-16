@@ -51,6 +51,7 @@ def create_app() -> FastAPI:
     application.include_router(auth.router)
     application.include_router(scenarios.router)
     application.include_router(dispatch.router)
+    application.include_router(dispatch.jobs_router)
     application.include_router(dismissals.router)
     application.include_router(placements.router)
     application.include_router(recommendations.router)
