@@ -150,6 +150,14 @@ async def read_board(request: Request, scenario_id: str):
 # Records about a job, never instructions: nothing here sends anything anywhere (BR-001).
 # Each moves the status machine one legal step and appends a dispatch_actions row; an
 # illegal step is a 409, because "mark restored" pressed twice is a conflict, not a retry.
+#
+# Authorization is the session, deliberately — the same model as the dismissal endpoint.
+# This platform has no scenario membership to check: every signed-in user may read every
+# loaded storm and record decisions against it (`technical-spec.md` §7.2 — choosing which
+# storm to work is the product), so a job id names nothing its caller could not already
+# reach through GET /scenarios → GET /scenarios/{id}/jobs. A membership check here would
+# verify a boundary that does not exist; if multi-tenancy ever arrives, it arrives in the
+# schema first, and then EVERY scenario-scoped route changes together, not this one alone.
 
 jobs_router = APIRouter(prefix="/api/v1/repair-jobs", tags=["dispatch"])
 
