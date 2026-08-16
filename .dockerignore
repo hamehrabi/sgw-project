@@ -1,0 +1,15 @@
+# Nothing that is a secret, a database, or a build product enters an image.
+.env
+*.db
+data/
+.git/
+.venv/
+node_modules/
+frontend/node_modules/
+frontend/.next/
+frontend/test-results/
+frontend/playwright-report/
+proj-knowledge/
+design/
+**/__pycache__/
+*.png

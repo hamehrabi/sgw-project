@@ -46,7 +46,7 @@ That is the weakest separation `review-log.md` records, and it is stated in the 
 hidden (Q-026). TASK-005, TASK-006 and TASK-008 are cleaner: the run neither wrote nor fixed
 them, and their checks held.
 
-**Done is not the same as decided. Forty-nine change entries are open and none is accepted** (CHG-016..CHG-039 from the build rounds, CHG-040..CHG-055 from the interface rebuild, CHG-056 from the client-dialect fix, CHG-057..CHG-064 from the interface feedback rounds).
+**Done is not the same as decided. Fifty change entries are open and none is accepted** (CHG-016..CHG-039 from the build rounds, CHG-040..CHG-055 from the interface rebuild, CHG-056 from the client-dialect fix, CHG-057..CHG-065 from the interface feedback rounds and the container packaging).
 Two of them contradict each other (CHG-034 and CHG-035), and one records a defect deliberately
 left unfixed — see *Known open defects* below.
 
@@ -267,7 +267,11 @@ re-assert both; a migration that drops one removes the guarantee and no function
 Run everything from the repo root. The virtualenv is `.venv/`.
 
 ```bash
-# setup, once
+# the whole product, no local toolchain — backend, frontend, database, optional AI
+# (CHG-065; first-run admin admin@sgw.local / change-me-first-run; see DOCKER.md)
+docker compose up --build                                # open http://localhost:3000
+
+# setup, once (local development)
 python -m venv .venv
 .venv/Scripts/python.exe -m pip install -r backend/requirements.txt   # + httpx2
 cd frontend && npm install

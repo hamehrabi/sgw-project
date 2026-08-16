@@ -1,0 +1,69 @@
+# SGW Resilience Platform — the whole product in one command:
+#
+#     docker compose up --build
+#
+# Then open http://localhost:3000 and sign in as the bootstrap admin
+# (admin@sgw.local / change-me-first-run unless you override the variables below),
+# or create an operator account from the sign-in screen (CHG-061).
+#
+# Everything configurable is an environment variable (ADR-006 — the application has
+# no defaults of its own; the values below are this file's). Override any of them in
+# a `.env` beside this file. The model is OPTIONAL (ADR-009): with LLM_ENABLED=false
+# the product runs whole — set it true and supply OPENAI_API_KEY to turn phrasing on.
+#
+# The database is one SQLite file (ADR-002) on the named volume `sgw-data`, so storms,
+# rankings and the append-only decision record survive `docker compose down`.
+# `docker compose down -v` is the reset switch.
+
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: docker/backend.Dockerfile
+    environment:
+      APP_ENV: development            # cookies over plain http; front with TLS before "production"
+      SESSION_SIGNING_KEY: ${SESSION_SIGNING_KEY:-dev-only-signing-key-change-me-please}
+      SESSION_IDLE_TIMEOUT_MINUTES: "240"
+      SESSION_ABSOLUTE_MAX_HOURS: "12"
+      PASSWORD_HASH_COST: "12"
+      DATABASE_PATH: /data/app.db
+      SCENARIO_UPLOAD_DIR: /data/scenarios
+      SCENARIO_MAX_FILE_BYTES: "8388608"
+      SCENARIO_MAX_TOTAL_BYTES: "10485760"
+      SCENARIO_PARSE_TIMEOUT_SECONDS: "120"
+      SCENARIO_STALE_AFTER_HOURS: "6"
+      TEMP_PASSWORD_EXPIRY_HOURS: "24"
+      SAMPLE_SCENARIO_DIR: /app/sample-data/demo-220
+      # ADR-009: the model phrases computed reasons and is optional at runtime.
+      LLM_ENABLED: ${LLM_ENABLED:-false}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4.1-nano}
+      LLM_MAX_CALLS_PER_RANKING: ${LLM_MAX_CALLS_PER_RANKING:-300}
+      LLM_MONTHLY_COST_CEILING_USD: ${LLM_MONTHLY_COST_CEILING_USD:-10}
+      LLM_TIMEOUT_SECONDS: ${LLM_TIMEOUT_SECONDS:-5}
+      # First-run admin (CHG-065): applied ONLY while the users table is empty, then
+      # ignored forever. The host operator's act, same trust level as the CLI.
+      BOOTSTRAP_ADMIN_EMAIL: ${BOOTSTRAP_ADMIN_EMAIL:-admin@sgw.local}
+      BOOTSTRAP_ADMIN_PASSWORD: ${BOOTSTRAP_ADMIN_PASSWORD:-change-me-first-run}
+      BOOTSTRAP_ADMIN_NAME: ${BOOTSTRAP_ADMIN_NAME:-Administrator}
+    volumes:
+      - sgw-data:/data
+    # Not published to the host on purpose: the browser reaches the API through the
+    # frontend's same-origin rewrite, exactly as in development (ADR-008, no CORS).
+    expose:
+      - "8000"
+
+  frontend:
+    build:
+      context: .
+      dockerfile: docker/frontend.Dockerfile
+    environment:
+      API_ORIGIN: http://backend:8000
+    ports:
+      - "${SGW_PORT:-3000}:3000"
+    depends_on:
+      backend:
+        condition: service_healthy
+
+volumes:
+  sgw-data:
