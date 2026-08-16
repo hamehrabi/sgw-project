@@ -12,7 +12,7 @@
 | TASK-002 | Upload and parse a prepared storm into the joined asset view — **and wire FF-001 and FF-006** | REQ-F-001, REQ-F-010, REQ-NF-003, SEC-Z-002, FF-001, FF-006 | P0 | TASK-001 | **Done** | agent | ATEST-001, ATEST-002, ATEST-009, ATEST-010, UTEST-002…008, ITEST-001, FTEST-001…003, STEST-005…007, E2E-002 |
 | TASK-003 | Ranked risk list with plain-words reasons, scored by a deterministic rule (ADR-005) | REQ-F-002, REQ-F-003, BR-002, FF-007 | P0 | TASK-002 | **Done** | agent | ATEST-003, ATEST-004, UTEST-009, UTEST-010, FTEST-004, EVAL-001, PTEST-001 |
 | TASK-004 | Accept, change, or reject a recommendation, writing the append-only record | REQ-F-006, REQ-F-009, BR-001, BR-004, FF-004, FF-005 | P1 | TASK-003 | **Done** | agent | ATEST-006, ATEST-008, ITEST-002, FTEST-005, STEST-008 |
-| TASK-005 | Dispatch board — one shared damage and repair list | REQ-F-007, REQ-NF-007 | P1 | TASK-002 | **Done** | agent | ATEST-007, ITEST-003, PTEST-002, UTEST-012 |
+| TASK-005 | Dispatch board — one shared damage and repair list | REQ-F-007, REQ-NF-007 | P1 | TASK-002 | **In review** | agent | ATEST-007, ITEST-003, PTEST-002, UTEST-012, ITEST-002 (the ordering half) |
 | TASK-006 | Re-rank on a forecast change, keeping the previous order | REQ-F-004 | P1 | TASK-003 | Not started | agent | ATEST-005, ITEST-004 |
 | TASK-007 | Record a crew placement against the ranking | REQ-F-005 | P1 | TASK-003 | Not started | agent | E2E-001 |
 | TASK-008 | Dismiss a false alarm in one action | REQ-F-008 | P1 | TASK-005 | Not started | agent | UTEST-011 |
@@ -56,14 +56,28 @@ otherwise. The paragraph that stood here said its done criteria were incomplete 
 not set a session duration; **ADR-006 answered it**, and both limits are read from configuration
 with a test that uses a value other than the default.
 
-**TASK-005 is Done, and it carries the first two change entries that are not accepted.**
-**CHG-016** (no endpoint creates a damage report) and **CHG-017** (`repair_jobs` had nowhere to
-keep the location it answers, and `damage_reports.location` had no fixed resolution) are
-**proposed**: the build could not proceed without deciding both, and neither decision is the
-agent's to accept. The row above gains **REQ-NF-007** and **UTEST-012** for the same reason —
-`traceability.md` already puts that requirement on TASK-002 and TASK-005, and this is the first
-task in which a damage location exists to be aggregated, so it is the first task where the rule
-can be broken.
+**TASK-005 was signed off as Done, blocked at a second review, and is now In review again.**
+The second review found that **the gate was not green** — 5 of 15 clean `pytest` runs were red —
+and that three of the task's own done criteria were proven by nothing. All eight findings are
+fixed and mutation-checked (`TASK-005.md`, *What the second review found*), and the suite has
+been run twelve times without a red. **It is not Done until somebody who did not fix it says so.**
+
+**The ordering defect was never TASK-005's alone**, which is why this row matters to TASK-004 as
+well: `decision_records` has been intermittently mis-ordered since migration 006, and
+`latest_recommendation` could return the wrong recommendation outright. That is fixed by the
+same migration.
+
+**Six change entries are open against this task and none is accepted.** **CHG-016** (no endpoint
+creates a damage report), **CHG-017** (`repair_jobs` had nowhere to keep the location it
+answers, and `damage_reports.location` had no fixed resolution), **CHG-018** (a monotonic `seq`,
+because a timestamp is not a total order), **CHG-019** (composite foreign keys — a foreign key
+proved an asset existed, never that it was in this storm), **CHG-020** (a job's location
+survives the dismissal of the report it came from) and **CHG-021** (`duplicate` given a reader).
+All are **proposed**: the build could not proceed without deciding them, and none of the
+decisions is the agent's to accept. The row above gains **REQ-NF-007** and **UTEST-012** for a
+different reason — `traceability.md` already puts that requirement on TASK-002 and TASK-005, and
+this is the first task in which a damage location exists to be aggregated, so it is the first
+task where the rule can be broken.
 
 **TASK-010 shrank, and TASK-002 grew, at that review** (CHG-010). FF-001 and FF-006 move into
 TASK-002, which is the task that first creates enough modules for an import cycle to exist and

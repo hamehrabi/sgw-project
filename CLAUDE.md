@@ -41,13 +41,28 @@ reader can still find. Two live examples are in *Known spec drift* below.
 **TASK-001 is Done** — accepted at review, with the author-is-reviewer conflict recorded in
 `review-log.md` rather than hidden (Q-026).
 
-**TASK-005 is Done.** Five of ten tasks built: sign-in, upload/parse/joined view, the ranked
-risk list, the append-only decision record, and the dispatch board. **TASK-006 (re-rank on a
-forecast change) is next.**
+**TASK-005 is back In review.** Five of ten tasks are built — sign-in, upload/parse/joined view,
+the ranked risk list, the append-only decision record, and the dispatch board — but the fifth
+was **blocked at a second review** and its eight findings were fixed on 2026-08-16
+(`TASK-005.md`, *What the second review found*). It is not Done until somebody who did not fix
+it says so. **TASK-006 (re-rank on a forecast change) is next.**
 
 **The gate is five commands, and the test suite is only one of them:**
-`pytest` (249) · `ruff` · `ci/fitness.py` (6 of 7 wired) · `ci/evals.py` (the quality floor) ·
-`playwright` (9, real Chromium against both processes).
+`pytest` (264) · `ruff` · `ci/fitness.py` (6 of 7 wired) · `ci/evals.py` (the quality floor) ·
+`playwright` (14, real Chromium against both processes).
+
+**Run the suite more than once before calling the gate green.** Five of fifteen clean runs were
+red before migration 008, from one root cause, and a suite run once looks green half the time.
+**A total order needs a key that is total:** `datetime.now(UTC).isoformat()` resolves to about
+15.6 ms here and a random UUID is not a tiebreak, so `repair_jobs`, `damage_reports` and
+`decision_records` each carry a monotonic `unique` `seq` and every chronological read orders by
+it (CHG-018). `decision_records` could not be backfilled — the `BEFORE UPDATE` trigger refuses
+the statement, which is BR-004 working.
+
+**The scenario is the scoping root, and a foreign key must carry it.** `references assets (id)`
+proves an asset exists; it never proved the asset is in *this* storm. `damage_reports` now uses
+composite keys `(asset_id, scenario_id) → assets (id, scenario_id)` (CHG-019). One instance of
+the same shape is knowingly unfixed and named in that entry: `risk_scores.asset_id`.
 
 **A damage location is a neighbourhood and can be nothing else.** CON-003 forbids any
 premise-level record, so `damage_reports.location` is constrained by the schema to exactly
@@ -57,10 +72,13 @@ REQ-NF-007's "aggregated in every log and export" holds by construction, because
 is stored to leak. **Two reports at one location are one repair job**, enforced by
 `unique (scenario_id, location_key)` on `repair_jobs`, not by the code that looks first.
 
-**Two change entries are `proposed` and await a human decision** — the first that were not
-self-accepted: **CHG-016** (no endpoint created a damage report, so AC-007 could not occur) and
-**CHG-017** (`repair_jobs.location_key`, and the resolution of `damage_reports.location`). Both
-are built; neither is accepted.
+**Six change entries are `proposed` and await a human decision** — the first that were not
+self-accepted: **CHG-016** (no endpoint created a damage report, so AC-007 could not occur),
+**CHG-017** (`repair_jobs.location_key`, and the resolution of `damage_reports.location`),
+**CHG-018** (a monotonic `seq` — a timestamp is not a total order), **CHG-019** (composite
+foreign keys, so a report cannot name another storm's asset), **CHG-020** (a job's neighbourhood
+survives the dismissal of the report it came from) and **CHG-021** (`damage_reports.status =
+'duplicate'` given a reader). All are built; none is accepted.
 
 Seven change entries have been raised from implementation, all accepted: **CHG-008** (a
 `sessions` table), **CHG-009** (`GET /api/v1/auth/session`), **CHG-010** (FF-002 was a gate

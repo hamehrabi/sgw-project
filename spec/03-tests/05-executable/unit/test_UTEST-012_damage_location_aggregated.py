@@ -11,6 +11,13 @@ storing any premise-level record, so the column is constrained to hold a neighbo
 nothing else. There is then nothing finer to aggregate on the way out — which is the only
 version of this rule that a later refactor cannot quietly undo, because the aggregation is not
 a step anyone can forget to call.
+
+**"Aggregated" names a resolution, and a resolution has two ways to be wrong.** The figure that
+reaches the log must be the count for *that neighbourhood* — not the count for the whole storm,
+which is coarser and says nothing about the area, and not the count for one asset, which is
+finer and is the thing REQ-NF-007 exists to forbid. The first version of this file filed every
+case into a single neighbourhood with no asset, so all three figures were the same number and
+neither wrong rule could be made to fail. The fixtures below keep the three apart on purpose.
 """
 
 import json
@@ -34,12 +41,12 @@ def a_storm(application, accounts):
     return "SC-privacy"
 
 
-def insert_report(connection, scenario_id, location):
+def insert_report(connection, scenario_id, location, report_id="DR-direct", seq=1):
     connection.execute(
         "insert into damage_reports"
-        " (id, scenario_id, location, reported_at, reported_by, status)"
-        " values ('DR-direct', ?, ?, '2026-08-16T00:00:00Z', 'U-1', 'open')",
-        (scenario_id, location),
+        " (id, scenario_id, location, reported_at, reported_by, status, seq)"
+        " values (?, ?, ?, '2026-08-16T00:00:00Z', 'U-1', 'open', ?)",
+        (report_id, scenario_id, location, seq),
     )
 
 
@@ -71,10 +78,16 @@ def test_the_store_refuses_a_location_finer_than_a_neighbourhood(
     application, accounts, location
 ):
     """The failure case, asserted against the **database** rather than a validator. A rule
-    that lives only in the service layer is one the first refactor removes (ADR-002)."""
+    that lives only in the service layer is one the first refactor removes (ADR-002).
+
+    Matched on `CHECK` rather than on `IntegrityError` alone: every other constraint on this
+    table raises the same class, so a bare `raises` would go on passing if the location check
+    were dropped and some unrelated column started refusing the row instead. It nearly did —
+    adding `seq not null` in migration 008 made every case here raise for the wrong reason.
+    """
     scenario_id = a_storm(application, accounts)
 
-    with pytest.raises(sqlite3.IntegrityError):
+    with pytest.raises(sqlite3.IntegrityError, match="CHECK constraint failed"):
         insert_report(application.state.db, scenario_id, location)
     application.state.db.rollback()
 
@@ -146,6 +159,158 @@ def test_a_single_report_in_a_sparse_area_still_aggregates(client, application, 
     assert "open_reports_in_area=1" in logged
     for forbidden in FORBIDDEN_IN_A_LOG:
         assert forbidden not in logged
+
+
+def an_asset(application, scenario_id, asset_id):
+    """An asset in this storm, so a report can name one and the per-asset figure can differ."""
+    application.state.db.execute(
+        "insert into assets (id, scenario_id, external_ids, type, location, match_status,"
+        " condition_estimated, created_at)"
+        " values (?, ?, '[\"X\"]', 'pump', '{\"lat\": 33.7412, \"lon\": -118.4991}', 'matched',"
+        " 0, '2026-08-16T00:00:00Z')",
+        (asset_id, scenario_id),
+    )
+    application.state.db.commit()
+    return asset_id
+
+
+def test_the_logged_figure_is_the_neighbourhoods_and_not_the_whole_storms(
+    client, application, accounts, caplog
+):
+    """The **coarser** wrong answer. Counting every open report in the storm satisfies every
+    single-neighbourhood fixture and tells a reader nothing about the area they asked about.
+
+    Four reports, three of them in Northgate: the area figure is 3 and the storm figure is 4,
+    so the two can no longer be the same number by accident.
+    """
+    caplog.set_level(logging.DEBUG)
+    sign_in(client, accounts["user"]["email"], accounts["user"]["password"])
+    scenario_id = a_storm(application, accounts)
+
+    for neighbourhood in ("Northgate", "Harbour West", "Northgate"):
+        client.post(
+            f"/api/v1/scenarios/{scenario_id}/damage-reports",
+            json={"neighbourhood": neighbourhood},
+        )
+    caplog.clear()
+    client.post(
+        f"/api/v1/scenarios/{scenario_id}/damage-reports", json={"neighbourhood": "Northgate"}
+    )
+    logged = everything_logged(caplog)
+
+    assert application.state.db.execute(
+        "select count(*) from damage_reports where scenario_id = ?", (scenario_id,)
+    ).fetchone()[0] == 4, "four reports in the storm, so the storm figure is a different number"
+    assert "open_reports_in_area=3" in logged
+    assert "open_reports_in_area=4" not in logged, "that is the storm, not the neighbourhood"
+
+
+def test_the_logged_figure_is_the_neighbourhoods_and_not_one_assets(
+    client, application, accounts, caplog
+):
+    """The **finer** wrong answer, and the one REQ-NF-007 exists to forbid. An asset is a
+    place; a count per asset is a count per place, which is the resolution CON-003 refuses.
+
+    Three reports in Northgate naming three different things — two assets and no asset — so a
+    per-asset figure would be 1 where the neighbourhood figure is 3.
+    """
+    caplog.set_level(logging.DEBUG)
+    sign_in(client, accounts["user"]["email"], accounts["user"]["password"])
+    scenario_id = a_storm(application, accounts)
+    first = an_asset(application, scenario_id, "AS-north-1")
+    second = an_asset(application, scenario_id, "AS-north-2")
+
+    client.post(
+        f"/api/v1/scenarios/{scenario_id}/damage-reports",
+        json={"neighbourhood": "Northgate", "asset_id": first},
+    )
+    client.post(
+        f"/api/v1/scenarios/{scenario_id}/damage-reports",
+        json={"neighbourhood": "Northgate", "asset_id": second},
+    )
+    caplog.clear()
+    client.post(
+        f"/api/v1/scenarios/{scenario_id}/damage-reports", json={"neighbourhood": "Northgate"}
+    )
+    logged = everything_logged(caplog)
+
+    assert "open_reports_in_area=3" in logged
+    assert "open_reports_in_area=1" not in logged, "that is one asset, not the neighbourhood"
+    for forbidden in FORBIDDEN_IN_A_LOG:
+        assert forbidden not in logged
+
+
+def test_the_area_figure_is_the_area_and_neither_of_its_neighbours(
+    client, application, accounts
+):
+    """The same three-way distinction asserted against the function that computes it, with
+    three numbers that are all different: 5 in the storm, 3 in Northgate, 1 for the asset."""
+    from app.store import dispatch
+
+    sign_in(client, accounts["user"]["email"], accounts["user"]["password"])
+    scenario_id = a_storm(application, accounts)
+    named = an_asset(application, scenario_id, "AS-north-1")
+
+    for neighbourhood, asset_id in (
+        ("Northgate", named),
+        ("Northgate", None),
+        ("Harbour West", None),
+        ("Northgate", None),
+        ("Saltmarsh", None),
+    ):
+        client.post(
+            f"/api/v1/scenarios/{scenario_id}/damage-reports",
+            json={"neighbourhood": neighbourhood, "asset_id": asset_id},
+        )
+
+    connection = application.state.db
+    in_the_storm = connection.execute(
+        "select count(*) from damage_reports where scenario_id = ?", (scenario_id,)
+    ).fetchone()[0]
+    for_the_asset = connection.execute(
+        "select count(*) from damage_reports where scenario_id = ? and asset_id = ?",
+        (scenario_id, named),
+    ).fetchone()[0]
+    for_the_area = dispatch.open_reports_in_area(
+        connection, scenario_id, dispatch.location_key("Northgate")
+    )
+
+    assert (in_the_storm, for_the_area, for_the_asset) == (5, 3, 1)
+    assert for_the_area != in_the_storm, "the storm is coarser than a neighbourhood"
+    assert for_the_area != for_the_asset, "an asset is finer than a neighbourhood"
+
+
+def test_a_duplicate_report_is_not_counted_as_open_work_in_the_area(
+    client, application, accounts
+):
+    """`damage_reports.status` has always permitted `duplicate` and nothing had a reader for
+    it, so the area figure counted a repeat call as a second piece of open work (CHG-021).
+
+    Nothing writes the status yet — TASK-008 writes `dismissed`, not this — so it is set
+    directly, which is also the only way a reader for it can be asserted today.
+    """
+    from app.store import dispatch
+
+    sign_in(client, accounts["user"]["email"], accounts["user"]["password"])
+    scenario_id = a_storm(application, accounts)
+    for _ in range(3):
+        client.post(
+            f"/api/v1/scenarios/{scenario_id}/damage-reports", json={"neighbourhood": "Northgate"}
+        )
+    connection = application.state.db
+    key = dispatch.location_key("Northgate")
+    assert dispatch.open_reports_in_area(connection, scenario_id, key) == 3
+
+    repeat = connection.execute(
+        "select id from damage_reports where scenario_id = ? order by seq desc limit 1",
+        (scenario_id,),
+    ).fetchone()["id"]
+    connection.execute("update damage_reports set status = 'duplicate' where id = ?", (repeat,))
+    connection.commit()
+
+    assert dispatch.open_reports_in_area(connection, scenario_id, key) == 2, (
+        "a second call about damage already counted is not a second piece of open work"
+    )
 
 
 def test_the_board_export_carries_no_location_finer_than_a_neighbourhood(

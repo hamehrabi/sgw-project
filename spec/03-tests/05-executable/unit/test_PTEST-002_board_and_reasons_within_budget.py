@@ -89,15 +89,38 @@ def statements_during(connection, work):
         work()
     finally:
         connection.set_trace_callback(None)
+    # Prove the haystack is a haystack before anyone reports no needle. Every assertion built
+    # on this list compares two counts, and `0 == 0` passes: if `set_trace_callback` ever
+    # stopped firing — a different connection, a driver change — the N+1 check below would go
+    # quiet rather than red.
+    assert seen, "no SQL was captured; the trace callback is not firing"
     return seen
 
 
+def issued(statements, sql):
+    """Was this statement among them? The tracer substitutes the bound parameters, so the SQL
+    is matched by the fragments either side of them rather than verbatim."""
+    parts = [part for part in sql.split("?") if part.strip()]
+    return any(all(part in statement for part in parts) for statement in statements)
+
+
 def test_the_board_query_searches_by_index_rather_than_scanning(demo_scale):
-    """The exact check `performance-tests.md` names, against the SQL the board actually runs."""
+    """The exact check `performance-tests.md` names, against the SQL the board actually runs.
+
+    **The index is named, and that is the load-bearing half.** `SCAN not in plan` alone cannot
+    fail for `repair_jobs`: three indexes are prefixed by `scenario_id` — the one below,
+    `sqlite_autoindex_repair_jobs_2` from `unique (scenario_id, location_key)`, and the
+    foreign-key parent key added by migration 008 — so dropping the one this row names left the
+    plan reading `SEARCH … USING INDEX` and the assertion green. It was an index guarded by
+    nothing, in the test that names it. Pinning the name is what makes dropping it red.
+    """
     application, _, scenario_id = demo_scale
     from app.store import dispatch
 
-    for sql in (dispatch.JOBS_SQL, dispatch.REPORTS_SQL):
+    for sql, index in (
+        (dispatch.JOBS_SQL, "repair_jobs_scenario_status"),
+        (dispatch.REPORTS_SQL, "damage_reports_scenario_status_job"),
+    ):
         plan = " | ".join(
             row["detail"]
             for row in application.state.db.execute(
@@ -106,6 +129,7 @@ def test_the_board_query_searches_by_index_rather_than_scanning(demo_scale):
         )
         assert "SCAN" not in plan, f"unindexed scan in the board query: {plan}"
         assert "USING INDEX" in plan or "USING COVERING INDEX" in plan, plan
+        assert index in plan, f"the board query no longer uses {index}: {plan}"
 
 
 def test_the_board_issues_the_same_number_of_queries_at_ten_reports_and_at_two_hundred(
@@ -113,6 +137,7 @@ def test_the_board_issues_the_same_number_of_queries_at_ten_reports_and_at_two_h
 ):
     """The N+1 this target dies of. A query per report passes every functional test."""
     application, client, scenario_id = demo_scale
+    from app.store import dispatch
 
     seed_reports(application, scenario_id, 10)
     small = statements_during(
@@ -123,6 +148,12 @@ def test_the_board_issues_the_same_number_of_queries_at_ten_reports_and_at_two_h
         application.state.db, lambda: client.get(f"/api/v1/scenarios/{scenario_id}/jobs")
     )
 
+    # The positive assertion beside the comparison, over the same enumeration: the two
+    # statements the board is supposed to issue must be found in it. Without this, an
+    # enumeration that quietly returned nothing would satisfy `len(large) == len(small)`
+    # perfectly and prove nothing at all.
+    for sql in (dispatch.JOBS_SQL, dispatch.REPORTS_SQL):
+        assert issued(small, sql), f"the board did not issue {sql}"
     assert len(large) == len(small), (
         f"{len(small)} statements for 10 reports and {len(large)} for 200 — "
         "the board is querying inside a loop"

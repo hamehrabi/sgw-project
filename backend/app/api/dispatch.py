@@ -67,6 +67,13 @@ async def file_damage_report(
     if body.asset_id and not scenarios.find_asset(connection, scenario_id, body.asset_id):
         # Refused rather than stored as null: at load, an unmatched report keeps its null
         # `asset_id` because nobody is there to correct it. Here somebody is.
+        #
+        # **This lookup is not the enforcement of the rule and must not be read as one**
+        # (ADR-002, CHG-019). The store refuses a cross-storm `asset_id` independently, through
+        # a composite foreign key over `(id, scenario_id)`. Until migration 008 this `if` was
+        # the only thing standing between a storm-A report and storm-B's asset — disabling it
+        # left 248 tests green — which is the failure `review-log.md` pre-committed to blocking
+        # on. What it buys now is a legible 400 instead of an integrity error.
         return errors.error(400, "validation_error", "That asset is not part of this storm.")
 
     try:

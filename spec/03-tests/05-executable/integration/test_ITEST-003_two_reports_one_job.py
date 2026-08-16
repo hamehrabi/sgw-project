@@ -180,6 +180,195 @@ def test_two_storms_never_share_a_job(client, application, accounts):
     assert board["items"][0]["report_count"] == 1
 
 
+def a_second_storm(application, accounts, scenario_id="SC-second-storm"):
+    application.state.db.execute(
+        "insert into scenarios (id, name, source_note, loaded_by, loaded_at, forecast_revision)"
+        " values (?, 'Second storm', 'other', ?, '2026-08-16T00:00:00Z', 0)",
+        (scenario_id, accounts["admin"]["id"]),
+    )
+    application.state.db.commit()
+    return scenario_id
+
+
+def insert_report_directly(
+    connection, *, scenario_id, asset_id=None, job_id=None, report_id="DR-direct"
+):
+    """Straight at the schema, past every line of service code. ADR-002's whole argument is
+    that this is where the rule has to hold."""
+    connection.execute(
+        "insert into damage_reports"
+        " (id, scenario_id, asset_id, repair_job_id, location, reported_at, reported_by,"
+        " status, seq)"
+        " values (?, ?, ?, ?, '{\"neighbourhood\": \"Northgate\"}',"
+        " '2026-08-16T00:00:00Z', 'U-1', 'open',"
+        " (select coalesce(max(seq), 0) + 1 from damage_reports))",
+        (report_id, scenario_id, asset_id, job_id),
+    )
+
+
+def test_the_database_refuses_a_report_naming_an_asset_from_another_storm(
+    client, application, accounts
+):
+    """**The finding this task was blocked on.** `asset_id references assets (id)` proves the
+    asset exists; it never proved the asset is in the storm the report names. The only thing
+    that did was an `if` in `api/dispatch.py` — a rule in the service layer that the store
+    could refuse, which is `review-log.md`'s pre-declared Block condition and ADR-002's exact
+    prohibition. Disabling that `if` left 248 tests green and nothing red.
+
+    "Two storms blended into one ranking would look entirely plausible" (CLAUDE.md), and a
+    crew sent to an asset that is not in this storm is that sentence with a van attached.
+    """
+    first_storm = loaded_storm(client, accounts)
+    elsewhere = client.get(f"/api/v1/scenarios/{first_storm}/assets").json()["items"][0]
+    second_storm = a_second_storm(application, accounts)
+
+    with pytest.raises(sqlite3.IntegrityError, match="FOREIGN KEY"):
+        insert_report_directly(
+            application.state.db, scenario_id=second_storm, asset_id=elsewhere["asset_id"]
+        )
+    application.state.db.rollback()
+
+
+def test_the_database_refuses_a_report_hung_off_another_storms_repair_job(
+    client, application, accounts
+):
+    """The same hole through the other foreign key: a report in storm B attached to storm A's
+    job would put a neighbourhood from one storm on the other storm's board."""
+    first_storm = loaded_storm(client, accounts)
+    report(client, first_storm, "Northgate")
+    elsewhere = application.state.db.execute(
+        "select id from repair_jobs where scenario_id = ?", (first_storm,)
+    ).fetchone()["id"]
+    second_storm = a_second_storm(application, accounts)
+
+    with pytest.raises(sqlite3.IntegrityError, match="FOREIGN KEY"):
+        insert_report_directly(
+            application.state.db, scenario_id=second_storm, job_id=elsewhere
+        )
+    application.state.db.rollback()
+
+
+def test_the_database_accepts_a_report_naming_an_asset_from_its_own_storm(
+    client, application, accounts
+):
+    """The permitted case, so the two refusals above are refusing something rather than
+    everything — and so an unattributable report is not caught in the same net."""
+    scenario_id = loaded_storm(client, accounts)
+    here = client.get(f"/api/v1/scenarios/{scenario_id}/assets").json()["items"][0]["asset_id"]
+
+    insert_report_directly(application.state.db, scenario_id=scenario_id, asset_id=here)
+    application.state.db.commit()
+
+    stored = application.state.db.execute(
+        "select asset_id from damage_reports where id = 'DR-direct'"
+    ).fetchone()
+    assert stored["asset_id"] == here
+    # §4: a report naming no matching asset is still a report. A composite key with a null half
+    # is satisfied, so nothing above forbids one.
+    insert_report_directly(
+        application.state.db, scenario_id=scenario_id, asset_id=None, report_id="DR-anonymous"
+    )
+    application.state.db.commit()
+    assert application.state.db.execute(
+        "select count(*) from damage_reports where asset_id is null"
+    ).fetchone()[0] == 1
+
+
+def test_the_endpoint_still_refuses_a_cross_storm_asset_legibly(client, application, accounts):
+    """The store is the enforcement; this is the readable 400 in front of it. Both, because a
+    caller deserves a sentence and the rule deserves a constraint."""
+    first_storm = loaded_storm(client, accounts)
+    elsewhere = client.get(f"/api/v1/scenarios/{first_storm}/assets").json()["items"][0]
+    second_storm = a_second_storm(application, accounts)
+
+    refused = report(client, second_storm, "Northgate", asset_id=elsewhere["asset_id"])
+
+    assert refused.status_code == 400
+    assert application.state.db.execute(
+        "select count(*) from damage_reports where scenario_id = ?", (second_storm,)
+    ).fetchone()[0] == 0
+
+
+def dismiss_directly(connection, report_id, dismissed_by):
+    """TASK-008's write, issued here because migration 007 already carries the columns and the
+    schema permits the state today. A state the board can reach is a state the board must
+    render, whether or not the endpoint that produces it has been built."""
+    connection.execute(
+        "update damage_reports set status = 'dismissed', dismissed_by = ?,"
+        " dismissed_reason = 'called it in twice by mistake' where id = ?",
+        (dismissed_by, report_id),
+    )
+    connection.commit()
+
+
+def test_a_job_whose_only_report_is_dismissed_keeps_its_location(
+    client, application, accounts
+):
+    """Dismissal hides a report from the working list. It does not unsay where the job is.
+
+    The board used to derive a job's neighbourhood from its first **open** report, so this
+    state produced `location: {"neighbourhood": null}` with `report_count: 0` — work on a
+    shared dispatcher's board with no location and nothing behind it. CHG-017 declined a
+    display column on `repair_jobs` because "the board derives a job's neighbourhood from its
+    first report"; the derivation now reads the first report *filed*, which is what that
+    sentence says (CHG-020).
+    """
+    scenario_id = loaded_storm(client, accounts)
+    filed = report(client, scenario_id, "Saltmarsh").json()
+
+    dismiss_directly(application.state.db, filed["report_id"], accounts["admin"]["id"])
+    board = client.get(f"/api/v1/scenarios/{scenario_id}/jobs").json()
+
+    job = board["items"][0]
+    assert job["location"] == {"neighbourhood": "Saltmarsh"}, "a job on the board has a place"
+    assert job["report_count"] == 0, "and nothing open behind it"
+    assert job["dismissed_report_count"] == 1, "which is explained rather than merely empty"
+    assert job["reports"] == [], "a dismissed false alarm leaves the working list"
+
+
+def test_a_dismissed_report_does_not_take_its_neighbours_location_with_it(
+    client, application, accounts
+):
+    """The silent case for the test above: with a second, still-open report at the same
+    location, `location` is right whichever report it is read from — so that test would pass
+    against an implementation that only ever reads the *last* report. Here the dismissed one
+    is first and the open one is somewhere else entirely."""
+    scenario_id = loaded_storm(client, accounts)
+    first = report(client, scenario_id, "Saltmarsh").json()
+    report(client, scenario_id, "Harbour West")
+
+    dismiss_directly(application.state.db, first["report_id"], accounts["admin"]["id"])
+    board = client.get(f"/api/v1/scenarios/{scenario_id}/jobs").json()
+
+    by_place = {item["location"]["neighbourhood"]: item for item in board["items"]}
+    assert set(by_place) == {"Saltmarsh", "Harbour West"}
+    assert by_place["Saltmarsh"]["report_count"] == 0
+    assert by_place["Harbour West"]["report_count"] == 1
+    assert board["report_count"] == 1
+    assert board["dismissed_report_count"] == 1
+
+
+def test_a_duplicate_report_stays_on_the_board_and_says_so(client, application, accounts):
+    """`damage_reports.status` has permitted `duplicate` since migration 007 and nothing read
+    it: the board's filter was `status <> 'dismissed'`, so a repeat call rendered as ordinary
+    open work. It stays visible — losing a radio call is the failure AC-007's second half
+    exists to prevent — and it carries its status, so the screen can badge it (CHG-021).
+    """
+    scenario_id = loaded_storm(client, accounts)
+    report(client, scenario_id, "Northgate")
+    repeat = report(client, scenario_id, "Northgate").json()
+    application.state.db.execute(
+        "update damage_reports set status = 'duplicate' where id = ?", (repeat["report_id"],)
+    )
+    application.state.db.commit()
+
+    job = client.get(f"/api/v1/scenarios/{scenario_id}/jobs").json()["items"][0]
+
+    assert job["report_count"] == 2, "both calls are still on the board"
+    assert [entry["status"] for entry in job["reports"]] == ["open", "duplicate"]
+    assert job["dismissed_report_count"] == 0
+
+
 def test_filing_a_report_writes_nothing_to_the_decision_record(client, application, accounts):
     """`decision_records.kind` has no value for a damage report, and that is deliberate: the
     audit table holds decisions about recommendations (CHG-015's reasoning, reused)."""

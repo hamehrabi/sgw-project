@@ -59,6 +59,55 @@ def test_both_reports_are_visible_and_linked_to_one_job(client, accounts):
     ], "in the order they were called in — the queue is the history"
 
 
+FROZEN = "2026-08-16T12:00:00+00:00"
+
+
+def test_the_queue_is_the_history_when_the_clock_cannot_separate_two_calls(
+    client, accounts, monkeypatch
+):
+    """*"In the order they were called in — the queue is the history."*
+
+    The assertion above says that of two reports. It was ordered by `reported_at, id`, and on
+    this platform `datetime.now(UTC).isoformat()` resolves to about 15.6 ms — so two radio
+    calls taken in the same tick came back in whichever order their random UUIDs fell, and
+    this file failed on roughly a third of clean runs.
+
+    The clock is frozen so the collision is certain rather than likely: twelve reports, one
+    timestamp, and the order still has to be the order they arrived in. A dispatcher reading
+    the second call above the first is reading a different story about the same street.
+    """
+    from app.store import dispatch
+
+    scenario_id = dispatcher_with_a_storm(client, accounts)
+    monkeypatch.setattr(dispatch, "_now", lambda: FROZEN)
+
+    called_in = [report(client, scenario_id, "Northgate")["report_id"] for _ in range(12)]
+
+    job = board_of(client, scenario_id)["items"][0]
+
+    # The guard: if these carried distinct timestamps the list could be ordered by the clock
+    # and still pass, and the tiebreak — the thing that was broken — would never be reached.
+    assert {entry["reported_at"] for entry in job["reports"]} == {FROZEN}
+    assert [entry["report_id"] for entry in job["reports"]] == called_in
+
+
+def test_two_jobs_created_in_one_tick_hold_their_order_too(client, accounts, monkeypatch):
+    """The same defect on the other board query: `repair_jobs` was `order by created_at, id`."""
+    from app.store import dispatch
+
+    scenario_id = dispatcher_with_a_storm(client, accounts)
+    monkeypatch.setattr(dispatch, "_now", lambda: FROZEN)
+    places = ["Northgate", "Harbour West", "Saltmarsh", "Old Quay", "Fen End", "Milltown"]
+
+    for place in places:
+        report(client, scenario_id, place)
+
+    board = board_of(client, scenario_id)
+
+    assert {item["created_at"] for item in board["items"]} == {FROZEN}
+    assert [item["location"]["neighbourhood"] for item in board["items"]] == places
+
+
 def test_the_second_report_is_not_silently_dropped(client, accounts):
     """The half a de-duplicating implementation loses. A report nobody can find is a radio
     call nobody can answer."""

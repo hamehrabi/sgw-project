@@ -6,6 +6,11 @@ optimisation of that constraint, not the enforcement of it. Delete this module's
 logic and the database still refuses the second job — which is the property the rule needs,
 because the failure it prevents is two crews at one location during a storm.
 
+**So does the storm scope** (CHG-019, migration 008). A report may only name an asset and a
+repair job belonging to the storm it is filed against, and the composite foreign keys over
+`(id, scenario_id)` are what refuse the rest. Until 008 that rule lived in an `if` in
+`api/dispatch.py`, which is the one place ADR-002 says a rule must never live.
+
 **Nothing here dispatches anything** (BR-001, BR-005). Creating a job records that work exists.
 No crew is assigned, no message leaves the platform, and `assigned_to` is a note about what
 people decided, never an instruction the platform issued.
@@ -21,14 +26,18 @@ from datetime import UTC, datetime
 
 # Every read scoped by `scenario_id`. Two storms blended into one board would look entirely
 # plausible and send a crew to a neighbourhood that is not in this storm at all.
-JOBS_SQL = "select * from repair_jobs where scenario_id = ? order by created_at, id"
+#
+# **Ordered by `seq`, never by a timestamp** (CHG-018). `datetime.now(UTC).isoformat()` resolves
+# to about 15.6 ms here, so `order by created_at, id` put two rows written inside one tick in
+# whichever order their random UUIDs happened to fall. A total order needs a key that is total.
+JOBS_SQL = "select * from repair_jobs where scenario_id = ? order by seq"
 
-# A dismissed false alarm leaves the working list rather than being deleted — REQ-F-008 is one
-# action, not an erasure, and TASK-008 is what writes that status. Nothing sets it yet.
-REPORTS_SQL = (
-    "select * from damage_reports where scenario_id = ? and status <> 'dismissed'"
-    " order by reported_at, id"
-)
+# **Every report, whatever its status**, because two different questions are being asked of this
+# result and only one of them wants the working list. The board shows the reports still open;
+# the job's neighbourhood comes from the first report ever filed for it, which is the only
+# stored form of that fact once a false alarm has been dismissed (CHG-020). Splitting the two in
+# `api/views.py` keeps the board at two statements whatever the report count (PTEST-002).
+REPORTS_SQL = "select * from damage_reports where scenario_id = ? order by seq"
 
 OPEN = "open"
 NEIGHBOURHOOD_MAX = 120
@@ -81,8 +90,12 @@ def file_report(connection, *, scenario_id, neighbourhood, asset_id, reported_by
             job_id = f"RJ-{uuid.uuid4().hex[:12]}"
             connection.execute(
                 "insert into repair_jobs"
-                " (id, scenario_id, status, location_key, created_at, updated_at)"
-                " values (?, ?, 'pending', ?, ?, ?)",
+                " (id, scenario_id, status, location_key, created_at, updated_at, seq)"
+                # The sequence is taken inside the same statement, and this module is the
+                # single writer (ADR-002). `unique (seq)` is what makes two rows claiming one
+                # place in the history a refusal rather than a coin flip.
+                " values (?, ?, 'pending', ?, ?, ?,"
+                " (select coalesce(max(seq), 0) + 1 from repair_jobs))",
                 (job_id, scenario_id, key, now, now),
             )
         else:
@@ -94,8 +107,9 @@ def file_report(connection, *, scenario_id, neighbourhood, asset_id, reported_by
         connection.execute(
             "insert into damage_reports"
             " (id, scenario_id, asset_id, repair_job_id, location, reported_at, reported_by,"
-            " status)"
-            " values (?, ?, ?, ?, ?, ?, ?, ?)",
+            " status, seq)"
+            " values (?, ?, ?, ?, ?, ?, ?, ?,"
+            " (select coalesce(max(seq), 0) + 1 from damage_reports))",
             (
                 report_id,
                 scenario_id,
@@ -131,14 +145,20 @@ def board(connection, scenario_id) -> tuple[list[sqlite3.Row], list[sqlite3.Row]
 def open_reports_in_area(connection, scenario_id, key) -> int:
     """The neighbourhood-level figure that reaches the log (REQ-NF-007).
 
-    An aggregate for the area, never a line identifying the one place a report came from —
-    which is the case that matters most, because a sparse area is where a single report is
-    closest to naming a household.
+    **Three figures could be computed here and only one of them is legal.** Coarser — every
+    open report in the storm — says nothing about the area. Finer — reports per asset — is
+    precisely what REQ-NF-007 exists to forbid, because an asset is a place. This one is the
+    neighbourhood: an aggregate for the area, never a line identifying the one place a report
+    came from, which is the case that matters most because a sparse area is where a single
+    report comes closest to naming a household.
+
+    Open means `status = 'open'`. A report marked `duplicate` is a second call about damage
+    already counted, and counting it twice would overstate the area's open work (CHG-021).
     """
     return connection.execute(
         "select count(*) from damage_reports as reports"
         " join repair_jobs as jobs on jobs.id = reports.repair_job_id"
         " where reports.scenario_id = ? and jobs.location_key = ?"
-        " and reports.status <> 'dismissed'",
+        " and reports.status = 'open'",
         (scenario_id, key),
     ).fetchone()[0]

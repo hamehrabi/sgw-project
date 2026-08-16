@@ -23,6 +23,19 @@ they would complain loudly and immediately. Everything else in the suite is a un
 or security test. The dispatch board did not earn one: its behaviour is covered by ITEST-003 and
 ATEST-007, and an E2E test of it would be a slower version of the same assertions.
 
+**That paragraph is still right about the flow and was read too widely.** It declines an
+`E2E-###` *journey* for the board. It does not license leaving a claim about the **screen**
+unverified, and TASK-005's second review found exactly that: done criterion 7 — *two reports at
+one location render under one job; the empty state reads "no damage reported", never "all
+clear"* — was satisfied by reading `DispatchBoard.tsx` and by nothing executable. ITEST-003 and
+the API-level ATEST-007 assert rows and response bodies; neither can see a rendered list, and
+neither would notice a screen that merged two reports into one line. So ATEST-007 now has a
+**browser half** as well, in `frontend/e2e/ATEST-007.spec.ts`, exactly as ATEST-004 does
+(`frontend/e2e/ATEST-004.spec.ts`) and for exactly the same reason: **an acceptance criterion
+phrased as "what the user sees" is asserted where the user is.** Its id stays ATEST-007 rather
+than becoming a third E2E flow, because it is the same criterion checked one layer out — not a
+new journey.
+
 ---
 
 ## Flow test template

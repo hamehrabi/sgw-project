@@ -7,7 +7,7 @@
 **Task ID:** TASK-005
 **Task title:** Dispatch board — one shared damage and repair list
 **Priority:** P1
-**Status:** Done — built 2026-08-16, `review-log.md`. Two change entries raised and **proposed, not accepted**: **CHG-016** (no endpoint creates a damage report) and **CHG-017** (the job had nowhere to keep the location it answers, and the report's location had no fixed resolution).
+**Status:** **In review** — built 2026-08-16, **blocked at a second review the same day**, and the four findings fixed (see *What the second review found* below). Six change entries are now open against this task and **none is accepted**: **CHG-016**, **CHG-017**, **CHG-018**, **CHG-019**, **CHG-020**, **CHG-021**. Re-review owed.
 **Assigned to:** AI agent
 
 ---
@@ -113,7 +113,9 @@ plus `repair_jobs.location_key` with `unique (scenario_id, location_key)` (CHG-0
 4. A location carrying anything beyond a neighbourhood — an address, a coordinate, a household —
    is refused by the store, and the endpoint refuses the field before it gets there (UTEST-012).
 5. No log line written by this task carries a location finer than a neighbourhood, and the
-   figure it logs is an aggregate for that neighbourhood (REQ-NF-007, UTEST-012).
+   figure it logs is an aggregate for that neighbourhood (REQ-NF-007, UTEST-012) — **neither
+   the whole storm's figure, which is coarser, nor one asset's, which is finer and is the thing
+   the requirement exists to forbid.** All three must be different numbers in the fixture.
 6. A single report in a sparse area still aggregates — one report in a neighbourhood is a
    neighbourhood figure of one, never a pointer to a household.
 7. The board query uses `damage_reports(scenario_id, status, repair_job_id)` rather than
@@ -124,12 +126,43 @@ plus `repair_jobs.location_key` with `unique (scenario_id, location_key)` (CHG-0
 9. A signed-out caller reaches neither endpoint (STEST-001 already lists `/jobs`).
 10. Every test written here was mutation-checked: the behaviour broken, the test seen red, the
     break reverted.
+11. **A damage report may only name an asset and a repair job from its own storm, and the
+    *store* is what refuses the rest** (ADR-002, CHG-019). Asserted by an insert issued
+    directly against the database, never through the endpoint.
+12. **Every chronological read is ordered by a key that is total** (CHG-018). Asserted with the
+    clock frozen, so a tie is certain rather than a one-in-two chance — and the suite is run
+    more than once before the gate is called green.
+13. `DispatchBoard` is driven in a browser: two reports at one location under one job, and an
+    empty board that reads *no damage reported* (done criterion 7, `e2e/ATEST-007.spec.ts`).
+
+## What the second review found, and what was changed
+
+**The gate was not green, and four of the ten criteria above were not proven by anything.** The
+review was run by a later agent invocation that had not written this code — not independence
+(Q-026), but a reader who did not already know where the code was careful. Its four checks are
+in `review-log.md`; three failed and one held with two dead sub-assertions. Every fix below was
+mutation-checked: the behaviour broken, the named tests seen red, the break reverted.
+
+| Finding | Fix | Made red by |
+|---|---|---|
+| **The gate is not green.** 5 of 15 clean `pytest` runs red. Every chronological read was `order by <timestamp>, id`; the clock resolves to ~15.6 ms and `id` is a random UUID. Not this task's alone — `decision_records` had it from migration 006, and `latest_recommendation` could return the wrong row outright. | **CHG-018**: a monotonic `unique` `seq` on `repair_jobs`, `damage_reports` and `decision_records` (migration 008). Reads order by it. | Four new cases with the clock **frozen**, so the collision is certain rather than likely: ATEST-007 (12 reports, 6 jobs) and ITEST-002 (25 records, and the `latest` pick). Each asserts one shared timestamp first, so the tiebreak is provably what is under test. |
+| **Block — a rule in the service layer the store could refuse.** `api/dispatch.py`'s `find_asset` lookup was the only thing scoping a report's `asset_id` to its own storm. Disabling it left 248 tests green. | **CHG-019**: composite foreign keys over `(id, scenario_id)`, with the unique parent keys SQLite needs (migration 008). The lookup stays as the legible 400 in front of the constraint. | Three ITEST-003 cases issuing the insert **directly against the database** — cross-storm asset, cross-storm job, and the permitted case beside them. |
+| **Done criterion 5 unasserted in both directions.** Every UTEST-012 case filed into one neighbourhood with no asset, so the area figure, the storm figure and the per-asset figure were the same number. | The fixtures keep the three apart: 5 in the storm, 3 in the area, 1 for the asset. | Both mutations the review found green — count the storm, count per asset — now fail two tests each. |
+| **A described state with nowhere to render.** A job whose only report is dismissed came back as `location: {"neighbourhood": null}`, `report_count: 0`. | **CHG-020**: the location is the first report **filed**, whatever its status — which is what CHG-017 already said — plus `dismissed_report_count`. | Two ITEST-003 cases, one of them the silent case: a dismissed report must not take a *neighbouring* job's location with it. |
+| Minor — `repair_jobs_scenario_status` was named by PTEST-002 and guarded by nothing (two other indexes serve the query). | The plan assertion pins the index **name**. The new parent-key indexes are ordered `(id, scenario_id)` so they cannot serve `where scenario_id = ?` and re-create the problem. | Dropping either named index now turns the query-plan test red. |
+| Minor — `statements_during` compared two counts with no positive guard; `0 == 0` would pass. | The helper asserts it captured something, and the test asserts **both board statements are in the list it counted**. | Silencing the tracer turns it red. |
+| Minor — `DispatchBoard` had no executable coverage; done criterion 7 was satisfied by reading the source. | `frontend/e2e/ATEST-007.spec.ts` — five browser cases against both processes. | — (new coverage, not a fix) |
+| Minor — `damage_reports.status` permits `duplicate` with no reader and no writer. | **CHG-021**: a duplicate stays on the board carrying its status, and is not counted as open work in its area. | Marking a report `duplicate` changes the area figure and the board's rendering, both asserted. |
+
+**Nothing here weakened a test.** UTEST-012's refusal cases were *strengthened* in passing: they
+matched bare `IntegrityError`, and adding `seq not null` made every one of them raise for the
+wrong reason — they now match `CHECK constraint failed`.
 
 ## Tests to run or create
 
 | Test ID | Defined in |
 |---|---|
-| ATEST-007 | `03-tests/02-functional/acceptance-tests.md` |
+| ATEST-007 | `03-tests/02-functional/acceptance-tests.md` — API level, plus `frontend/e2e/ATEST-007.spec.ts` for done criterion 7 |
 | ITEST-003 | `03-tests/02-functional/integration-tests.md` |
 | PTEST-002 | `03-tests/03-non-functional/performance-tests.md` |
 | UTEST-012 (owed by REQ-NF-007, which this task is the first to make reachable) | `03-tests/02-functional/unit-tests.md` |

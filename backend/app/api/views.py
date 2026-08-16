@@ -137,31 +137,52 @@ def damage_report_item(row) -> dict:
     }
 
 
-def repair_job_item(job_row, reports: list[dict]) -> dict:
+DISMISSED = "dismissed"
+
+
+def repair_job_item(job_row, filed: list[dict]) -> dict:
     """One job and every report behind it.
+
+    `filed` is every report ever filed against this job, oldest first, **whatever its status** —
+    which is what the two halves below need, and they need different halves.
 
     Both halves of AC-007 are visible here: **one** job for the location, and **every** report
     that arrived for it. An implementation that de-duplicated instead would satisfy the first
     and lose the second — a second radio call about the same street with no record of it.
 
-    No rank, no score, no band. The job's location is its first report's, which is why
-    `repair_jobs` needs no display column of its own.
+    **The location comes from the first report ever filed, not from the first still open**
+    (CHG-020). CHG-017 declined a display column on `repair_jobs` on the ground that "the board
+    derives a job's neighbourhood from its first report", and it does — but the derivation used
+    to read the working list, so dismissing a job's only report left the board showing a job
+    with `{"neighbourhood": null}`: work on a shared dispatcher's board with no location.
+    Dismissal hides a report from the working list; it does not unsay where the job is.
+
+    A dismissed report is counted rather than silently dropped, so a job whose reports have all
+    been dismissed reads as *explained* rather than as empty.
+
+    No rank, no score, no band.
     """
+    working = [report for report in filed if report["status"] != DISMISSED]
     return {
         "job_id": job_row["id"],
         "status": job_row["status"],
         "priority_rank": job_row["priority_rank"],
         "assigned_to": job_row["assigned_to"],
-        "location": reports[0]["location"] if reports else {"neighbourhood": None},
+        "location": filed[0]["location"] if filed else {"neighbourhood": None},
         "created_at": job_row["created_at"],
         "updated_at": job_row["updated_at"],
-        "report_count": len(reports),
-        "reports": reports,
+        "report_count": len(working),
+        "dismissed_report_count": len(filed) - len(working),
+        "reports": working,
     }
 
 
 def board_body(scenario_id: str, jobs, reports) -> dict:
     """The shared board. Grouped in memory from two queries, never one query per job.
+
+    `reports` carries every status; the split into what is shown and what was dismissed happens
+    here rather than in SQL, so the board stays at two statements however many reports exist
+    (PTEST-002) and a job's location survives the dismissal of the report it came from.
 
     The empty state is an empty list with its counts stated — `no damage reported`, which the
     screen must never render as `all clear`.
@@ -170,11 +191,13 @@ def board_body(scenario_id: str, jobs, reports) -> dict:
     for row in reports:
         grouped.setdefault(row["repair_job_id"], []).append(damage_report_item(row))
 
+    items = [repair_job_item(job, grouped.get(job["id"], [])) for job in jobs]
     return {
         "scenario_id": scenario_id,
-        "items": [repair_job_item(job, grouped.get(job["id"], [])) for job in jobs],
+        "items": items,
         "job_count": len(jobs),
-        "report_count": len(reports),
+        "report_count": sum(item["report_count"] for item in items),
+        "dismissed_report_count": sum(item["dismissed_report_count"] for item in items),
     }
 
 

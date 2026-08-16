@@ -29,12 +29,23 @@ function Job({ job }: { job: RepairJob }) {
   return (
     <li className="job" data-testid="job">
       <div className="job__head">
-        <strong>{job.location.neighbourhood ?? 'Location not recorded'}</strong>{' '}
+        <strong data-testid="job-location">
+          {job.location.neighbourhood ?? 'Location not recorded'}
+        </strong>{' '}
         <span className="job__status">{job.status.replace('_', ' ')}</span>
-        <span className="job__count">
+        <span className="job__count" data-testid="job-count">
           {' '}
           · {job.report_count} report(s) — one job for this location
         </span>
+        {/* A job whose reports have all been dismissed still has a place and a history. An
+            empty job with no explanation beside it is one of the three states on this screen
+            that read as good news when they are not. */}
+        {job.dismissed_report_count > 0 && (
+          <span className="job__dismissed" data-testid="job-dismissed">
+            {' '}
+            · {job.dismissed_report_count} dismissed as a false alarm
+          </span>
+        )}
       </div>
       <ul className="job__reports">
         {job.reports.map((report) => (

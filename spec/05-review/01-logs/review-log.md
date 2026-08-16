@@ -19,7 +19,32 @@
 
 | 2026-08-16 | TASK-005 output, **reviewed a second time against its own done criteria** — migration 007, `store/dispatch.py`, `api/dispatch.py`, `views.repair_job_item` / `board_body`, `DispatchBoard`, and the four executable tests | TASK-005 / REQ-F-007, REQ-NF-007, AC-007, ADR-002, CON-003 | A later agent run, which **did not write TASK-005** — but author and reviewer are still the same process (**Q-026**, see the note below) | Requirement fit · Architecture fit · Security & validation · Performance · Test evidence · Change scope | **The gate is not green.** Two tests fail intermittently on an unmodified tree — **5 of 15 clean `pytest` runs were red** — from a single root cause that reaches `decision_records` as well as the board. **Three of four directed checks failed**, each confirmed by a mutation the suite did not notice: REQ-NF-007's *aggregate for that neighbourhood* is unasserted in **both** directions; the storm-scope of a report's `asset_id` lives only in service code, which is this log's pre-declared **Block** condition; and a repair job's location has nowhere to live once its only report is dismissed. No finding requires a specification decision, so **no change entry is raised** — CHG-016 and CHG-017 remain the only two proposed. | **Block** | Fix the ordering tiebreak first — it is `decision_records`' order as much as the board's; then move the scope rule into the schema; the third finding is evidence bearing on the still-open **CHG-017** |
 
+| 2026-08-16 | **TASK-005 remediation** — migration 008, `store/dispatch.py`, `store/decisions.py`, `api/views.py`, `api/dispatch.py`, `lib/api.ts`, `DispatchBoard.tsx`, four executable test files and a new Playwright spec | TASK-005 / REQ-F-007, REQ-NF-007, REQ-F-009, AC-007, ADR-002, BR-004 | The agent that fixed the Block — **not a reviewer, and this row is not an acceptance** (see below) | Requirement fit · Architecture fit · Security & validation · Performance · Test evidence · Change scope | All eight defects closed, each with the mutation that now makes it red recorded in `TASK-005.md`. **The ordering fix reaches further than TASK-005**: `decision_records` had been intermittently mis-ordered since migration 006 and `latest_recommendation` could return the wrong row outright. Four change entries raised and left **proposed**: **CHG-018** (a monotonic `seq`), **CHG-019** (composite foreign keys — the Block), **CHG-020** (a job's location survives its report's dismissal), **CHG-021** (`duplicate` given a reader). Suite 264 + 1 skipped, run 12 times with no red. One instance of CHG-019's shape is knowingly **not** fixed and is named in the entry: `risk_scores.asset_id`. | **Fixed — awaiting re-review** | The six proposed entries need a human decision; TASK-006 is next and must not be started on the assumption that this is accepted |
+
 **Decision values:** Accept · Accept with follow-up · Revise · Reject · Block
+
+### The remediation row above is not a signature, and the difference matters here more than usual
+
+**The agent that fixed the Block wrote the row recording that it is fixed.** That is one step
+worse than the Q-026 problem the rest of this log carries: author and reviewer being the same
+process is bad; author, reviewer and *the party judging whether the reviewer's finding was
+addressed* being the same process is the whole loop closed on itself. So the row says **Fixed —
+awaiting re-review** rather than Accept, because "the defects I was told to fix no longer
+reproduce" is a statement about tests, and acceptance is a statement about judgement.
+
+What the row is worth resting on is the **mutation evidence**, because it is checkable by
+anyone: each fix names the change that turns its test red, and every one of those mutations was
+applied, run, and reverted. The two mutations the second review used to prove `open_reports_in_area`
+was unasserted now fail two tests each; disabling the service-layer scope check now fails a
+test where it previously failed none; dropping either index PTEST-002 names now turns its
+query-plan assertion red. **`git status --short` was empty after every mutation.**
+
+**One finding was not fixed and is named rather than quietly closed.** `risk_scores.asset_id`
+(migration 005) carries the same existence-not-membership foreign key that CHG-019 replaces on
+`damage_reports`. It is written only from server-derived identifiers, never from caller input,
+so it is not reachable the way the Block was — but it is the same defect, it is recorded in
+CHG-019, and rewriting a fourth table inside a TASK-005 remediation would be scope this task
+does not have.
 
 ### The second review of TASK-005 — four checks, three of them failed
 

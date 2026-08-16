@@ -173,10 +173,18 @@ export interface RepairJob {
   priority_rank: number | null
   /** A note about what people decided. The platform assigns nobody (BR-001). */
   assigned_to: string | null
+  /**
+   * The neighbourhood of the **first report ever filed** for this job, not of the first still
+   * open — dismissing a false alarm hides a report from the working list, it does not unsay
+   * where the job is (CHG-020).
+   */
   location: { neighbourhood: string | null }
   created_at: string
   updated_at: string
+  /** Reports still on the working list. */
   report_count: number
+  /** Reports dismissed as false alarms, so a job with nothing open reads as explained. */
+  dismissed_report_count: number
   reports: DamageReport[]
 }
 
@@ -185,6 +193,7 @@ export interface Board {
   items: RepairJob[]
   job_count: number
   report_count: number
+  dismissed_report_count: number
 }
 
 export const dispatch = {

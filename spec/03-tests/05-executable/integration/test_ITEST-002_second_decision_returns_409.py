@@ -134,6 +134,80 @@ def test_an_admin_may_read_the_decision_record(client, accounts):
     assert kinds == ["recommendation", "change"], "ordered by when they happened"
 
 
+FROZEN = "2026-08-16T12:00:00+00:00"
+
+
+def test_the_record_comes_back_in_the_order_it_was_appended(
+    client, application, accounts, monkeypatch
+):
+    """`read_all`'s docstring says *the order **is** the history, not a view of it.*
+
+    **It was not, and had not been since migration 006 shipped.** The read was
+    `order by occurred_at, id`; `occurred_at` comes from a clock that resolves to about 15.6 ms
+    here, and `id` is a random UUID hex, so two rows appended inside one tick came back in
+    whichever order their identifiers fell. The test above asserted that order on two rows and
+    failed on roughly a third of clean runs — intermittently red for two whole tasks with
+    nobody noticing, because a suite run once looks green half the time.
+
+    Freezing the clock removes the coin flip from the test rather than from the defect: every
+    row below carries **one** timestamp, which is the state this platform reaches on its own
+    and the state the old ordering could not survive. Twenty-five rows make a wrong order a
+    certainty rather than a one-in-two chance.
+
+    Volume goes through the store, not the endpoint — the same choice PTEST-002 makes, and for
+    the same reason: this is about the read's ordering, not about how a row is created.
+    """
+    from app.store import decisions
+
+    scenario_id, recommendation_id = loaded_with_recommendation(client, accounts)
+    connection = application.state.db
+    monkeypatch.setattr(decisions, "_now", lambda: FROZEN)
+
+    appended = [recommendation_id]
+    for revision in range(1, 25):
+        appended.append(
+            decisions.append_recommendation(
+                connection,
+                scenario_id=scenario_id,
+                forecast_revision=revision,
+                payload={"revision": revision},
+            )
+        )
+
+    body = client.get(f"/api/v1/scenarios/{scenario_id}/decisions").json()
+
+    # The guard that keeps the assertion below honest. If these rows carried distinct
+    # timestamps, the read could be ordered by the clock and still pass — and the tiebreak,
+    # which is the thing under test, would never be reached.
+    assert {row["occurred_at"] for row in body["items"][1:]} == {FROZEN}
+    assert [row["id"] for row in body["items"]] == appended, "the order IS the history"
+
+
+def test_the_latest_recommendation_is_the_last_one_written(
+    client, application, accounts, monkeypatch
+):
+    """`latest_recommendation` picked with `order by occurred_at desc limit 1`, so on a tie it
+    could return the **wrong row outright** — and a decision would then be recorded against a
+    recommendation nobody was shown."""
+    from app.store import decisions
+
+    scenario_id, _ = loaded_with_recommendation(client, accounts)
+    connection = application.state.db
+    monkeypatch.setattr(decisions, "_now", lambda: FROZEN)
+
+    written = [
+        decisions.append_recommendation(
+            connection, scenario_id=scenario_id, forecast_revision=7, payload={"n": n}
+        )
+        for n in range(12)
+    ]
+
+    found = decisions.latest_recommendation(connection, scenario_id, 7)
+
+    assert found["occurred_at"] == FROZEN, "every candidate shares the timestamp it sorted by"
+    assert found["id"] == written[-1]
+
+
 def test_the_decision_moves_nothing(client, application, accounts):
     """BR-001. The response is a record, never an action."""
     _, recommendation_id = loaded_with_recommendation(client, accounts)
