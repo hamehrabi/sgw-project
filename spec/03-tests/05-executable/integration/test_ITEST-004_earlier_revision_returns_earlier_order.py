@@ -172,3 +172,65 @@ def test_the_scenario_lists_the_revisions_that_exist(client, accounts):
     assert [entry["forecast_revision"] for entry in scenario["forecast_revisions"]] == [0, 1, 2]
     assert scenario["forecast_revisions"][1]["valid_time"] == "2026-08-15T06:00:00Z"
     assert scenario["next_forecast_revision"] == 2
+
+
+def test_a_forecast_the_file_carries_is_not_the_same_as_a_revision_that_can_be_read(
+    client, accounts
+):
+    """CHG-027, and the defect it was raised for.
+
+    The series is a property of the prepared **file** and is complete the moment the storm is
+    loaded; a ranking exists only where somebody has applied one. Nothing in this response
+    distinguished the two, so `ForecastRevisionControl` drew one selectable button per entry —
+    and pressing an unapplied one asked `GET /risks?forecast_revision=2` for a ranking that had
+    never been computed. The 404 below is *correct* (§7.3 forbids a silent fallback), which is
+    exactly why the control must not offer the action: the screen it produced showed no ranking,
+    no asset table, and accept / change / reject beside a list that was not there.
+
+    **Both halves are asserted, and the pair is the point** — a response that reported every
+    revision as unranked would satisfy the negative half on its own.
+    """
+    scenario_id = load(client, accounts)
+
+    fresh = client.get(f"/api/v1/scenarios/{scenario_id}").json()["forecast_revisions"]
+    assert [entry["forecast_revision"] for entry in fresh] == [0, 1, 2]
+    assert [entry["ranked"] for entry in fresh] == [True, False, False]
+    # And the entries that say `false` say it truthfully: reading one is a 404.
+    unranked = client.get(f"/api/v1/scenarios/{scenario_id}/risks?forecast_revision=2")
+    assert unranked.status_code == 404
+    # The haystack: the entry that says `true` is readable, so `false` means something.
+    readable = client.get(f"/api/v1/scenarios/{scenario_id}/risks?forecast_revision=0")
+    assert readable.status_code == 200
+
+    applied = client.post(f"/api/v1/scenarios/{scenario_id}/forecast-revisions")
+    assert applied.status_code == 201, applied.text
+
+    after = client.get(f"/api/v1/scenarios/{scenario_id}").json()["forecast_revisions"]
+    assert [entry["ranked"] for entry in after] == [True, True, False]
+    assert client.get(
+        f"/api/v1/scenarios/{scenario_id}/risks?forecast_revision=1"
+    ).status_code == 200
+
+
+def test_ranked_is_read_from_the_stored_rankings_and_not_from_the_pointer(
+    client, accounts, application
+):
+    """The pointer is one number; the rankings are the fact, and the two can disagree.
+
+    A `forecast_revision` moved directly to a revision nothing ranked leaves the default
+    `GET /risks` answering 404 while the scenario response still reads *current*. Deriving
+    `ranked` from `scenario_id`'s pointer — `entry <= current`, the cheap implementation —
+    would have the control offer that revision and every one below it. Asserted against a state
+    reached by a **direct** statement, because that is the only way to make the two disagree.
+    """
+    connection = application.state.db
+    scenario_id = load(client, accounts)
+    connection.execute(
+        "update scenarios set forecast_revision = 2 where id = ?", (scenario_id,)
+    )
+    connection.commit()
+
+    entries = client.get(f"/api/v1/scenarios/{scenario_id}").json()["forecast_revisions"]
+
+    assert [entry["ranked"] for entry in entries] == [True, False, False]
+    assert client.get(f"/api/v1/scenarios/{scenario_id}/risks").status_code == 404

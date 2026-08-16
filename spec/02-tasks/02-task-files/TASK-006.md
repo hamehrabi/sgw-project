@@ -7,7 +7,14 @@
 **Task ID:** TASK-006
 **Task title:** Re-rank on a forecast change, keeping the previous order
 **Priority:** P1
-**Status:** In review — built 2026-08-16. Two change entries raised and left **proposed**: **CHG-025** (a scenario's forecast series had nowhere to live, and nothing decided what "the next forecast change" is) and **CHG-026** (`risk_scores` had no enforcement of *never rewrites n*).
+**Status:** In review — built 2026-08-16, **blocked at review the same day**, and all three
+findings plus all three observations fixed on 2026-08-16 (*What the review found, and what was
+done about it*, below). Four change entries raised and left **proposed**: **CHG-025** (a
+scenario's forecast series had nowhere to live, and nothing decided what "the next forecast
+change" is), **CHG-026** (`risk_scores` had no enforcement of *never rewrites n*), **CHG-027**
+(a forecast the file carries is not a revision that can be read back, and the screen offered
+both as one list) and **CHG-028** (three invariants on `risk_scores` the store could hold and
+did not). **It is not Done until somebody who did not fix it says so.**
 **Assigned to:** AI agent
 
 ---
@@ -73,6 +80,9 @@ afterwards, each one labelled with the forecast that produced it.
 
 **Backend:** migration **010** — `scenario_forecast_revisions` and `scenario_forecast_cells`,
 plus `risk_scores`' `BEFORE UPDATE` trigger; both `decision_records` triggers re-asserted.
+Migration **011**, added at the remediation — `risk_scores` rebuilt with the composite asset key,
+a conditional `BEFORE DELETE` guard and a `BEFORE INSERT` guard that a ranking names one of its
+storm's own forecasts (**CHG-028**); both `decision_records` triggers re-asserted again.
 `store/forecasts.py` — the series, the next revision, one revision's cells.
 `store/scenarios.py` — the series written inside the load transaction; the asset read carries
 revision 0's `valid_time`. `store/rankings.py` — `save_revision` (the ranking **and** the
@@ -168,7 +178,9 @@ earlier ones.
 | ATEST-005 | `03-tests/02-functional/acceptance-tests.md` |
 | ITEST-004 | `03-tests/02-functional/integration-tests.md` |
 | TASK-006 done criterion 13 (`test_TASK-006-AC13_migration_010_up_and_down.py`) | this file — the same way TASK-001 and TASK-003 wrote a test for a criterion no plan row owned |
-| PTEST-001 (re-run — the re-rank limit it measures is this task's operation) | `03-tests/03-non-functional/performance-tests.md` |
+| TASK-006 done criterion 2, the chronology half (`test_TASK-006-AC2_revisions_are_numbered_chronologically.py`) | this file — written at the remediation, because *the next forecast change* has no meaning without it |
+| TASK-006 done criterion 12 (`frontend/e2e/ATEST-005.spec.ts`) | this file — the browser case the criterion named and nothing executable covered |
+| PTEST-001 (re-run — **and extended to the endpoint**, which is the operation REQ-NF-001 names; the in-process cases measured a proxy for it) | `03-tests/03-non-functional/performance-tests.md` |
 | STEST-001 (already lists this endpoint; it now exists to refuse) | `03-tests/03-non-functional/security-tests.md` |
 
 ## What the mutation check found
@@ -218,6 +230,32 @@ because both failures were silent: renaming a trigger does not disable it, and a
 in a module-level dict does not reset between two `create_app()` calls in one pytest process —
 `test_ADR-002_sequence_survives_restart.py` already keys its equivalent by `id(connection)` for
 exactly that reason. A mutation that does not actually mutate reports a clean bill.
+
+## What the review found, and what was done about it
+
+**Three findings and three observations, all closed. Each fix names the mutation that now makes
+it red, because that is the part a later reader can check.** Every mutation below was applied,
+the relevant gate stage run, and reverted; `git status --short` showed no unexpected file after
+each one.
+
+| Finding | Fix | Mutation that is now red |
+|---|---|---|
+| **Chronological numbering (CHG-025, criterion 2) was asserted by nothing.** The only fixture listed its three forecast times already in chronological file order, so `enumerate(observed)` — dictionary insertion order, which is file order — passed all 323 tests. Handed a file that is not pre-sorted, that mutation numbers revision 0 as the 06:00 forecast and walks the storm backwards through its own weather. | `weather.csv` in `storm-with-a-forecast-change` now lists its three time blocks **06:00, 12:00, 00:00** — the file order, the text order and the chronological order are three different answers, and `test_TASK-006-AC2_revisions_are_numbered_chronologically.py` names all three. It asserts the fixture's disorder first (the haystack: if anyone tidies the file, the discrimination goes with it), then the numbering, then that each revision carries **its own** cells, then a fully reversed file producing an identical series, then two forecasts in different UTC offsets whose text order and true order disagree, then an unparseable `valid_time` (the `_chronological` branch nothing had reached), then the same property at demo scale, where the generator emits ~5,000 rows at randomly chosen times. | `enumerate(observed)` fails **17**, seven of them ATEST-005's. `sorted(observed)` — the plain text sort — fails the offsets case, which is the one that separates a parse from a string compare. |
+| **Criterion 11 was half-proven: the restart test asserted nothing about the forecast VALUES.** It crossed a restart and then compared the two earlier **orders**, served from stored `risk_scores.rank` that no restart could lose, and that the next apply answered 201. Cells held in a per-connection temp table passed all 25 cases, and a second application over the same file re-ranked the whole storm to `ranked: 0, unscored: 5`. | The restart case now compares the **whole ranking**, values and all: the gust and its `valid_time` come from `scenario_forecast_cells` by a left join, so a lost series makes every one of them null while the order is untouched. It asserts the gusts are non-null **before** the restart (the haystack), the full `items` of revisions 0 and 1 after it, `ranked: 4, unscored: 1` on the next apply, and revision 2's own numbers including a carried-forward cell. A second case, `test_the_forecast_series_is_in_the_database_and_not_in_the_process`, reads all 15 cells back through the restarted application's own connection. | The review's own mutation — `save_series` writing the cells to a `temp table` that shadows the real one — fails **both** restart cases and leaves the other 24 green, which is the point it was making. |
+| **Criterion 12 (`ForecastRevisionControl`) was covered by nothing executable, and the control had a reachable defect.** `GET /scenarios/{id}` lists the forecasts the **file** carries, so a freshly loaded storm reports `[0, 1, 2]` while only revision 0 is ranked; the control drew a selectable button per entry, pressing *Revision 2* got the 404 §7.3 requires, and `ScenarioView`'s single `catch` put the whole screen into an error state it never left — with accept / change / reject still offered beside a ranking that was not there. | **CHG-027.** Each entry carries **`ranked`**, read out of `risk_scores` rather than inferred from the pointer; the control renders an unapplied revision **disabled** and says *not applied yet, so there is no order to compare*; `ScenarioView`'s three reads settle independently, a ranking that could not be read is cleared rather than left standing, and `RecommendationDecision` is not rendered without it. **`e2e/ATEST-005.spec.ts`** is the browser case the criterion never had — three ordered tests over the real fixture in real Chromium. | Deleting the whole `<ul className="revisions__list">` block fails **3** browser cases (it used to leave all 14 green). Removing `disabled={!entry.ranked}` fails 2. Reporting every forecast as `ranked` from the backend fails the same 2 in the browser and 2 in `pytest`. |
+
+| Observation | What was done |
+|---|---|
+| **Two invariants the store could hold and does not** — a direct `delete`-and-reinsert of revision 0 was accepted, and `risk_scores` carried no key on `(scenario_id, forecast_revision)`. | **CHG-028**, migration **011**. A `before delete` guard whose `when` clause fires only when both parents are still present — true of a direct delete, false inside either cascade, and both cascades asserted rather than reasoned about. A `before insert` guard that a ranking names one of its storm's own forecasts. And the composite `(asset_id, scenario_id)` foreign key, which closes the instance CHG-019 recorded as knowingly unfixed. The **foreign key** version of the revision rule was written, run and **withdrawn**, with the evidence in the entry: it makes 010's rollback destroy every stored ranking. Mutations: the delete guard absent, present-and-wrong, and unconditional; the insert guard absent; the asset key back to `references assets (id)` — five mutations, five different tests red. |
+| **PTEST-001 measured a proxy for the operation this task created** — `load_scenario` plus `rank_assets` in process, touching neither the endpoint, nor `score_revision`'s join, nor `save_revision`'s 220-row write and pointer move. | Two cases added that drive `POST /forecast-revisions` at demo scale through the API, and one that asserts the **shape**: everything the re-rank does apart from writing one row per asset is constant between 110 and 220 assets. The in-process cases stay — they are what makes a regression name itself. Mutation: one lookup per asset inside `score_revision` — 122 statements at 110 assets against 232 at 220, red. |
+| **Migration 010's backfill dates revision 0 from a different source than the loader does**, and the fixture could not tell them apart. | The fixture's manifest now says the advisory was issued at **21:00 on the 14th** while its earliest forecast is valid from **00:00 on the 15th** — two different strings. `test_the_backfill_dates_revision_zero_from_the_manifest_and_the_loader_does_not` names both, asserts which one survives a rollback round trip, and follows it to the value BR-003 puts an age beside. The backfill genuinely has no better source — `assets` carries the gust and never the time it was issued for — so the fix is to make the re-dating **loud** rather than to pretend it does not happen. |
+
+**Two things this remediation did not do, named rather than left out.** The foreign key the
+review named on `(scenario_id, forecast_revision)` is declined in writing in CHG-028, with the
+rollback evidence. And `scenarios.forecast_revision` can still be moved directly to a revision
+nothing has ranked; the pointer cannot carry a foreign key without a circular reference between
+`scenarios` and `scenario_forecast_revisions`, and CHG-027's `ranked` flag is what stops the
+screen believing it.
 
 ## Out of scope
 

@@ -94,40 +94,59 @@ def test_an_unscorable_asset_has_no_score_and_still_has_its_reason():
         assert item.rank is None
 
 
-def test_the_store_refuses_a_score_with_no_reasons(application, accounts):
-    """Asserted against the database. BR-002 is a constraint, not a convention."""
-    connection = application.state.db
+def one_rankable_storm(connection, admin_id) -> None:
+    """A storm, one forecast revision and one asset — the smallest thing a ranking may hang off.
+
+    The revision row is not decoration. Since CHG-028 a ranking carries a composite foreign key
+    into `scenario_forecast_revisions`, so a `risk_scores` insert without one is refused for a
+    reason that has nothing to do with BR-002 — and the refusal test below would then pass with
+    the reasons constraint removed. That is the fifth-and-counting shape this repository keeps
+    finding: an assertion that cannot fail for the reason it claims.
+    """
     connection.execute(
         "insert into scenarios (id, name, source_note, loaded_by, loaded_at, forecast_revision)"
         " values ('SC-1', 'S', 'n', ?, '2026-08-15', 0)",
-        (accounts["admin"]["id"],),
+        (admin_id,),
+    )
+    connection.execute(
+        "insert into scenario_forecast_revisions"
+        " (scenario_id, forecast_revision, valid_time, created_at)"
+        " values ('SC-1', 0, '2026-08-15T00:00:00Z', '2026-08-15')"
     )
     connection.execute(
         "insert into assets (id, scenario_id, external_ids, type, location, match_status,"
         " created_at) values ('A-1', 'SC-1', '[\"SS-1\"]', 'line', '{}', 'matched', '2026-08-15')"
     )
 
-    with pytest.raises(sqlite3.IntegrityError):
+
+def test_the_store_refuses_a_score_with_no_reasons(application, accounts):
+    """Asserted against the database. BR-002 is a constraint, not a convention."""
+    connection = application.state.db
+    one_rankable_storm(connection, accounts["admin"]["id"])
+
+    with pytest.raises(sqlite3.IntegrityError) as refused:
         connection.execute(
             "insert into risk_scores (id, scenario_id, asset_id, forecast_revision, score,"
             " rank, reasons, weight_set_version, computed_at)"
             " values ('R-1', 'SC-1', 'A-1', 0, 55.0, 1, '[]', 'adr-007-v1', '2026-08-15')"
         )
         connection.commit()
+    connection.rollback()
+
+    # Refused by BR-002 in particular, and not by a foreign key the row happens also to miss.
+    assert "CHECK constraint failed" in str(refused.value), (
+        f"refused by something other than BR-002: {refused.value}"
+    )
 
 
 def test_the_store_accepts_a_score_that_carries_one_reason(application, accounts):
-    """The edge case: exactly one reason is valid. Brevity is not the rule."""
+    """The edge case: exactly one reason is valid. Brevity is not the rule.
+
+    It is also the permitted case beside the refusal above — the same insert differing in the
+    one column the rule is about, so the refusal cannot be a malformed statement.
+    """
     connection = application.state.db
-    connection.execute(
-        "insert into scenarios (id, name, source_note, loaded_by, loaded_at, forecast_revision)"
-        " values ('SC-1', 'S', 'n', ?, '2026-08-15', 0)",
-        (accounts["admin"]["id"],),
-    )
-    connection.execute(
-        "insert into assets (id, scenario_id, external_ids, type, location, match_status,"
-        " created_at) values ('A-1', 'SC-1', '[\"SS-1\"]', 'line', '{}', 'matched', '2026-08-15')"
-    )
+    one_rankable_storm(connection, accounts["admin"]["id"])
 
     connection.execute(
         "insert into risk_scores (id, scenario_id, asset_id, forecast_revision, score, rank,"

@@ -27,7 +27,63 @@
 
 | 2026-08-16 | **TASK-006 output, reviewed against its own done criteria** — migration 010 (`scenario_forecast_revisions`, `scenario_forecast_cells`, `risk_scores_no_update`) and its down migration, `store/forecasts.py`, `store/rankings.py`, `store/scenarios.py`, `api/rerank.py`, `api/scenarios.py`, `api/views.py`, `loader/load.py`, `ForecastRevisionControl.tsx`, the new fixture, and the three executable test files (29 cases) | TASK-006 / REQ-F-004, AC-005, ADR-002, ADR-005, BR-003, CHG-025, CHG-026 | A later agent run, which **did not write TASK-006** — but author and reviewer are still the same process (**Q-026**, see the note below) | Requirement fit · Architecture fit · Security & validation · Performance · Test evidence · Change scope | **The full gate is green — `pytest` 323 + 1 skipped over four clean runs — and three of four directed checks failed, each confirmed by a mutation the gate did not notice.** Done criterion 4 is real: the store refuses the `UPDATE`, and the test reads the rule out of the refusal so it cannot pass for BR-002's reason. **Criterion 11 is half-proven** — the restart test asserts the pointer and the two stored orders and nothing about the forecast *values*; a series whose cells do not survive a restart re-ranks the whole storm to `ranked: 0, unscored: 5` with all 25 cases still green. **CHG-025's *"numbered from 0 in chronological order"* is asserted by nothing** — the fixture's three forecast times are already in file order, so numbering by file order passes all 323, and on a file that is not pre-sorted that mutation walks the storm backwards through time. **Criterion 12 is covered by nothing executable** — no Playwright case was added, deleting the whole revision list leaves `tsc`, `lint`, `build` and all 14 browser cases green, and in a real browser the control offers revisions that have no ranking, which puts the entire screen into an error state it never leaves. Two observations: PTEST-001 measures a proxy for the re-rank rather than the endpoint, and migration 010's backfill dates revision 0 from a different source than the loader does. **No finding requires a specification decision, so no change entry is raised** — the eleven proposed entries stand unchanged. | **Block** | Assert the chronology against an out-of-order fixture; extend the restart case to the forecast values it exists to protect; give `ForecastRevisionControl` a browser case and stop offering a revision that cannot be read; the eleven proposed entries still need a human decision |
 
+| 2026-08-16 | **TASK-006 remediation** — migration 011, the reordered `storm-with-a-forecast-change` fixture, `store/forecasts.py`, `api/views.py`, `lib/api.ts`, `ForecastRevisionControl.tsx`, `ScenarioView.tsx`, four executable test files, one new unit file and the first Playwright spec this task has had | TASK-006 / REQ-F-004, AC-005, ADR-002, BR-003, CHG-025…CHG-028 | The agent that fixed the Block — **not a reviewer, and this row is not an acceptance** (see the note under TASK-005's remediation rows, which applies unchanged) | Requirement fit · Architecture fit · Security & validation · Performance · Test evidence · Change scope | All three findings and all three observations closed, each with the mutation that now makes it red recorded in `TASK-006.md`. **The chronology now has a fixture where the right answer and the wrong one differ**: `weather.csv` lists its three forecast times 06:00, 12:00, 00:00, so file order, text order and chronological order are three different answers and a new unit file names all three — `enumerate(observed)` fails **17** tests and the plain text sort fails the UTC-offset case. **The restart case now compares the whole ranking rather than the order**, so the temp-table mutation that left all 25 cases green fails both restart tests. **Criterion 12 has a browser case**, and the defect behind it is fixed in the response rather than in the screen: `forecast_revisions[]` carries `ranked` (**CHG-027**), the control disables what has no order behind it, and `ScenarioView`'s three reads settle independently so one failed read is one failed panel. Migration **011** puts the other half of *never rewrites n* in the schema together with two further keys (**CHG-028**) — and the foreign key the review named was written, run and **withdrawn in writing**, because it makes 010's rollback destroy every stored ranking. PTEST-001 now measures the endpoint REQ-NF-001 names, and the backfill's dating is loud instead of silent. Suite **346 + 1 skipped over four runs**, `ruff`, `ci/fitness.py` (6 of 7), `ci/evals.py`, `tsc`, `lint`, `build` and all **17** Playwright specs pass. Two change entries raised and left **proposed**: **CHG-027** and **CHG-028**. | **Fixed — awaiting re-review** | Thirteen proposed entries now need a human decision; a re-review should start with the two invariants CHG-028 declines and with `scenarios.forecast_revision`, which can still point at a revision nothing ranked |
+
 **Decision values:** Accept · Accept with follow-up · Revise · Reject · Block
+
+### The remediation of the TASK-006 Block — what was fixed, and the two places the review's own remedy was not taken
+
+**Each fix names the mutation that turns it red, because that is the part a later reader can
+check.** Every mutation below was applied, the relevant stage of the gate run, and reverted;
+`git status --short` showed no unexpected file after each one.
+
+| Finding | Mutation that is now red |
+|---|---|
+| CHG-025's *numbered from 0 in chronological order* | `enumerate(observed)` instead of `enumerate(sorted(observed, key=_chronological))` fails **17** tests, seven of them ATEST-005's, where it used to leave all 323 green. `sorted(observed)` — the plain text sort, which is the subtler wrong answer — fails the case built on two forecasts in different UTC offsets |
+| Criterion 11, the forecast **values** across a restart | `save_series` writing the cells to a `create temp table` that shadows the real one — the review's own mutation — fails **both** restart cases and leaves the other 24 green |
+| Criterion 12, `ForecastRevisionControl` | Deleting the whole `<ul className="revisions__list">` block fails **3** browser cases; removing `disabled={!entry.ranked}` fails 2; reporting every forecast as `ranked` from the store fails 2 in the browser and 2 in `pytest` |
+| CHG-028(a), delete-and-reinsert | The `before delete` guard absent fails 1; **present and wrong** (pointed at `damage_reports`) fails the same 1; **unconditional**, with the `when` clause removed, fails the whole-scenario cascade case instead — which is the trade-off migration 010 declined the guard over, now held down by a test |
+| CHG-028(b), a ranking of a forecast that does not exist | The `before insert` guard absent fails 1, and the refusal is read out of the message so it cannot pass for the unique constraint's reason |
+| CHG-028(c), the asset key | `references assets (id)` instead of `(asset_id, scenario_id) → assets (id, scenario_id)` fails 1 — CHG-019's shape, on the table that entry named as knowingly unfixed |
+| PTEST-001 measuring the endpoint | One lookup per asset inside `score_revision`: 122 statements around the write at 110 assets against 232 at 220, red on shape rather than on wall-clock, because five seconds is generous by design |
+
+**The foreign key the review named was written, run, and withdrawn — and saying so plainly is the
+point of this paragraph.** `foreign key (scenario_id, forecast_revision) references
+scenario_forecast_revisions (…)` is the constraint the observation asked for, and it is the one a
+reader would expect after CHG-019. With `on delete cascade` it hands `scenario_forecast_revisions`
+the power to delete rankings — and migration 010's *down* drops that table, so **rolling 010 back
+destroys every stored ranking in the database**. With `on delete restrict` it turns §7.2's scenario
+delete into an integrity error, because a scenario reaches `risk_scores` by two paths whose order
+SQLite does not define; that is CHG-024's argument unchanged. And it cannot be satisfied by data
+that already exists after a 010 rollback, because the rankings survive and the forecast times do
+not — the rebuild would abort the upgrade or invent a forecast time out of a computation time. So
+the rule is a `before insert` trigger, which says the true and narrower thing: **what may be
+written.** The limit is recorded rather than implied away — no orphan can be *created*, which is
+not the same as none can *exist* — and it is in CHG-028 with the alternatives.
+
+**The second place is `scenarios.forecast_revision`.** The review showed the pointer can be moved
+directly to a revision nothing ranked, after which the default `GET /risks` is a 404 while every
+screen reads *current*. A foreign key from `scenarios (id, forecast_revision)` into
+`scenario_forecast_revisions` would be circular — that table's own key points back at `scenarios`
+— and a deferred circular pair is a worse cure than the disease. What is done instead is CHG-027:
+`ranked` is read out of `risk_scores`, so the screen no longer believes the pointer. A new test
+reaches that state by a direct statement and requires the response to disagree with it.
+
+**One thing was found while fixing rather than by the review, and it is the more interesting of
+the two.** Migration 011's insert guard made `UTEST-009`'s *the store refuses a score with no
+reasons* start passing for the **wrong reason**: without a forecast-revision row in its
+hand-built scenario, the insert was refused by the new guard rather than by BR-002, and the test
+would then have passed with BR-002's check constraint deleted. That is the sixth *assertion that
+could not fail for the reason it claimed* in this repository, and the first found by adding a
+constraint rather than by a mutation. Its setup now creates the revision row and it reads
+`CHECK constraint failed` out of the refusal.
+
+**And one that is worth more than either.** The reordered fixture is a three-line change to a CSV
+and it turned a green suite red in seventeen places. Nothing about the code moved. The lesson row
+`AGENT.md` already carries — *a figure that claims a resolution needs a fixture in which the
+answers differ* — was written about a count and is really about **every** input a test is built
+on: the fixture is an assertion, and a fixture in which the right and wrong implementations agree
+asserts nothing at all.
 
 ### The review of TASK-006 — four checks, three of them failed
 

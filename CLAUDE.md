@@ -41,21 +41,31 @@ reader can still find. Two live examples are in *Known spec drift* below.
 **TASK-001 is Done** — accepted at review, with the author-is-reviewer conflict recorded in
 `review-log.md` rather than hidden (Q-026).
 
-**TASK-005 is back In review, for the third time.** Five of ten tasks are built — sign-in,
-upload/parse/joined view, the ranked risk list, the append-only decision record, and the
-dispatch board — but the fifth was **blocked at a second review and blocked again at a third**,
-and each round's findings were fixed on 2026-08-16 (`TASK-005.md`, *What the third review
-found*). It is not Done until somebody who did not fix it says so. **TASK-006 (re-rank on a
-forecast change) is next, and must not be started on the assumption that TASK-005 is accepted.**
+**TASK-005 and TASK-006 are both In review, neither is Done, and both have been blocked once by
+a reader who did not write them.** Six of ten tasks are built — sign-in, upload/parse/joined
+view, the ranked risk list, the append-only decision record, the dispatch board, and the re-rank
+on a forecast change. TASK-005 was blocked at a second review and again at a third; TASK-006 was
+blocked at its first. Every round's findings were fixed the same day (`TASK-005.md`, *What the
+third review found*; `TASK-006.md`, *What the review found, and what was done about it*).
+**Neither is Done until somebody who did not fix it says so**, and TASK-007 must not be started
+on the assumption that either is accepted.
 
-**Three reviews of one task have each found something the previous one did not, and every one
-of them was found by a directed mutation rather than by the gate.** 264 tests, six fitness
-functions, ten evals and fourteen browser cases were all green while a second crew could be sent
-to one neighbourhood. Treat a green gate as the start of a review, not the end of one.
+**Four reviews across two tasks have each found something the previous one did not, and every
+one of them was found by a directed mutation rather than by the gate.** 323 tests, six fitness
+functions, ten evals and fourteen browser cases were all green while a re-ranked storm could come
+back from a restart with every asset unrankable, a prepared file could be walked **backwards**
+through its own forecasts, and the screen TASK-006 delivers could be broken by pressing a button
+it drew itself. Treat a green gate as the start of a review, not the end of one.
+
+**A fixture is an assertion.** The chronology defect was three lines of CSV: one fixture listing
+its forecast times in chronological file order, so the right implementation and the obvious wrong
+one agreed and 323 tests could not tell them apart. Reordering it turned 17 tests red without
+touching a line of code. Where a rule decides an *order*, a *resolution* or a *grouping*, the
+fixture has to be one in which the wrong answers are different answers.
 
 **The gate is five commands, and the test suite is only one of them:**
-`pytest` (294) · `ruff` · `ci/fitness.py` (6 of 7 wired) · `ci/evals.py` (the quality floor) ·
-`playwright` (14, real Chromium against both processes).
+`pytest` (346) · `ruff` · `ci/fitness.py` (6 of 7 wired) · `ci/evals.py` (the quality floor) ·
+`playwright` (17, real Chromium against both processes).
 
 **Run the suite more than once before calling the gate green.** Five of fifteen clean runs were
 red before migration 008, from one root cause, and a suite run once looks green half the time.
@@ -67,8 +77,9 @@ the statement, which is BR-004 working.
 
 **The scenario is the scoping root, and a foreign key must carry it.** `references assets (id)`
 proves an asset exists; it never proved the asset is in *this* storm. `damage_reports` now uses
-composite keys `(asset_id, scenario_id) → assets (id, scenario_id)` (CHG-019). One instance of
-the same shape is knowingly unfixed and named in that entry: `risk_scores.asset_id`.
+composite keys `(asset_id, scenario_id) → assets (id, scenario_id)` (CHG-019). The one instance
+that entry named as knowingly unfixed — `risk_scores.asset_id` — was closed by migration 011
+(CHG-028), inside the rebuild that table needed anyway.
 
 **A damage location is a neighbourhood and can be nothing else.** CON-003 forbids any
 premise-level record, so `damage_reports.location` is constrained by the schema to exactly
@@ -86,16 +97,36 @@ trimmed and singly-spaced — `Northgate` and `north  gate` bounce at the databa
 `dispatch.NEIGHBOURHOOD_MAX`, and UTEST-012 reads it out of `sqlite_master` so the copies cannot
 drift; when they do, the specified `400 validation_error` silently becomes a `500`.
 
-**Nine change entries are `proposed` and await a human decision** — the first that were not
+**A forecast the prepared file carries is not a revision that can be read back** (CHG-027).
+`GET /scenarios/{id}` lists the whole series from the moment a storm is loaded; only a revision
+somebody has applied has a ranking. Each entry carries `ranked`, read out of `risk_scores` and
+never inferred from `scenarios.forecast_revision` — the pointer is one number and the rankings
+are the fact, and the two can disagree. A control that offers an action whose only possible
+answer is a refusal is a defect, not a rough edge.
+
+**`risk_scores` is the table AC-005 is about, and it now holds three more rules** (CHG-028,
+migration 011): a `BEFORE DELETE` guard that fires only when both parents are still present, so
+delete-and-reinsert is refused while both cascades still work; a `BEFORE INSERT` guard that a
+ranking names one of its own storm's forecasts; and `(asset_id, scenario_id) → assets
+(id, scenario_id)`, which closes the instance CHG-019 recorded as knowingly unfixed. **Migration
+011 must be rolled back before 010 and not after** — its insert guard reads a table 010 creates.
+The foreign key on `(scenario_id, forecast_revision)` is **declined in writing** in CHG-028: it
+makes rolling 010 back destroy every stored ranking.
+
+**Thirteen change entries are `proposed` and await a human decision** — the first that were not
 self-accepted: **CHG-016** (no endpoint created a damage report, so AC-007 could not occur),
 **CHG-017** (`repair_jobs.location_key`, and the resolution of `damage_reports.location`),
 **CHG-018** (a monotonic `seq` — a timestamp is not a total order), **CHG-019** (composite
 foreign keys, so a report cannot name another storm's asset), **CHG-020** (a job's neighbourhood
 survives the dismissal of the report it came from), **CHG-021** (`damage_reports.status =
 'duplicate'` given a reader), **CHG-022** (a damage report belonging to no repair job is on the
-board and in the area figure), **CHG-023** (normalisation and the single bound, above) and
-**CHG-024** (a report whose asset is deleted — the cascade kept, the alternatives recorded).
-All are built except CHG-024, which is a record rather than a change; none is accepted.
+board and in the area figure), **CHG-023** (normalisation and the single bound, above),
+**CHG-024** (a report whose asset is deleted — the cascade kept, the alternatives recorded),
+**CHG-025** (a scenario's forecast series had nowhere to live, and nothing decided what "the
+next forecast change" is), **CHG-026** (`risk_scores` had no enforcement of *never rewrites n*),
+**CHG-027** (a forecast that exists is not a revision that can be read back) and **CHG-028**
+(three invariants on `risk_scores` the store could hold and did not). All are built except
+CHG-024, which is a record rather than a change; none is accepted.
 
 Seven change entries have been raised from implementation, all accepted: **CHG-008** (a
 `sessions` table), **CHG-009** (`GET /api/v1/auth/session`), **CHG-010** (FF-002 was a gate
@@ -209,7 +240,7 @@ python -m venv .venv
 cd frontend && npm install
 
 # the gate — the suite is NOT the gate on its own
-.venv/Scripts/python.exe -m pytest                       # 294 tests, 1 skipped
+.venv/Scripts/python.exe -m pytest                       # 346 tests, 1 skipped
 .venv/Scripts/python.exe -m ruff check backend spec/03-tests/05-executable ci
 .venv/Scripts/python.exe ci/fitness.py                   # FF-001, FF-002, FF-006
 cd frontend && npx tsc --noEmit && npm run lint && npm run build

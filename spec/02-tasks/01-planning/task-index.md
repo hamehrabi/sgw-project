@@ -93,7 +93,8 @@ and ITEST-004 exist as 25 executable cases, migration **010** is shipped with an
 *never rewrites n* test raised the right exception type for the wrong reason, and passed with
 the new trigger removed. It is fixed and now reads the rule out of the refusal.
 
-**Two more change entries are open, bringing the total to eleven, and none is accepted.**
+**Two change entries were opened when TASK-006 was built, bringing the total to eleven at that
+point, and none is accepted.**
 **CHG-025** (a scenario's forecast series had nowhere to live, and nothing decided what "the
 next forecast change" is — `weather.csv`'s `valid_time` column and the ~5,000 forecast rows the
 fixture is sized at were parsed and thrown away) and **CHG-026** (nothing stopped an earlier
@@ -117,6 +118,29 @@ into an error state it never leaves. The store/service check **held**, with two 
 as observations. No finding needs a specification decision, so **no change entry is raised** and
 the eleven proposed entries stand unchanged. All four checks and their mutations are in
 `review-log.md`.
+
+**All three findings and all three observations were fixed the same day, and TASK-006 is still
+not Done.** The chronology now rests on a fixture where the answers **differ**:
+`storm-with-a-forecast-change/weather.csv` lists its three forecast times 06:00, 12:00, 00:00, so
+file order, text order and chronological order are three different answers and a new unit file
+names all three — the mutation that used to leave 323 green now fails **17** tests. The restart
+case compares the whole ranking rather than the order, so the per-connection cells mutation fails
+both restart tests instead of none. Criterion 12 has its first browser case, and the defect
+behind it is fixed in the **response**: `forecast_revisions[]` carries `ranked` (**CHG-027**), the
+control disables a revision that has no order behind it, and `ScenarioView`'s three reads settle
+independently so one failed read is one failed panel rather than a blank screen with
+accept/change/reject still on it. Migration **011** puts the rest of *never rewrites n* in the
+schema with two further keys (**CHG-028**) — and the foreign key the review named was written,
+run and **withdrawn in writing**, because it makes 010's rollback destroy every stored ranking.
+PTEST-001 measures the endpoint REQ-NF-001 actually names, and migration 010's backfill dating is
+now loud instead of silent. Suite **346 + 1 skipped over four runs**, whole gate green, every fix
+mutation-checked (`TASK-006.md`, *What the review found, and what was done about it*).
+
+**Thirteen change entries are open and none is accepted**, after **CHG-027** (a forecast the
+prepared file carries is not the same thing as a revision that can be read back, and one response
+reported them as one list) and **CHG-028** (three invariants on `risk_scores` the store could hold
+and did not — delete-and-reinsert, a ranking of a forecast that does not exist, and CHG-019's
+remaining existence-not-membership key).
 
 **The ordering defect was never TASK-005's alone**, which is why this row matters to TASK-004 as
 well: `decision_records` has been intermittently mis-ordered since migration 006, and

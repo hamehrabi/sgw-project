@@ -283,10 +283,19 @@ def scenario_body(scenario_row, upload_row, config, *, revisions=(), now=None) -
         # Every revision this storm carries, with the forecast time behind each one. A
         # re-rank is not "one more" — the series is a property of the prepared file, and a
         # control that guessed at it would offer a forecast that does not exist (CHG-025).
+        #
+        # **`ranked` says which of them can be read back** (CHG-027). The list is the forecasts
+        # the FILE carries and it is complete from the moment the storm is loaded; a ranking
+        # exists only where somebody has applied one. Nothing in this response distinguished
+        # the two, so `ForecastRevisionControl` offered a button per entry and pressing an
+        # unapplied one answered the 404 §7.3 requires — correctly — and took the whole screen
+        # down with it. A revision with no ranking is a forecast that is *coming*, not an order
+        # that can be compared, and the response has to be able to say so.
         "forecast_revisions": [
             {
                 "forecast_revision": row["forecast_revision"],
                 "valid_time": row["valid_time"],
+                "ranked": bool(row["ranked"]),
             }
             for row in revisions
         ],

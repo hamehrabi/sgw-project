@@ -10,10 +10,22 @@
  * - **Applying is one action**, and it is disabled while it runs and once the storm has no
  *   forecast left. A control that stayed live after the last revision would offer an action
  *   whose only possible answer is a refusal.
- * - **Every revision the storm carries stays selectable, by its forecast time.** That is the
+ * - **Every revision that has been ranked stays selectable, by its forecast time.** That is the
  *   *comparison* half, and it is the reason this is a list rather than a single button: an
  *   operator who placed a crew against revision 0 has to be able to go back and see what they
  *   were looking at when they did.
+ *
+ * **A forecast the storm carries is not the same thing as an order that can be read back**
+ * (CHG-027). `GET /scenarios/{id}` lists the revisions in the prepared **file** — all of them,
+ * from the moment the storm is loaded — and this list used to draw one selectable button per
+ * entry. Pressing *Revision 2* on a freshly loaded storm therefore asked for a ranking that had
+ * never been computed; the server answered the 404 `technical-spec.md` §7.3 requires, and
+ * `ScenarioView` put the whole screen into an error state it never left: no ranking, no asset
+ * table, the control still reading *revision 0 · current*, and accept / change / reject still
+ * offered beside a list that was not there. A control must not offer an action whose only
+ * possible answer is a refusal — the same rule the apply button already followed for the end of
+ * the series. An unapplied revision is shown, and shown as **coming**: hiding it would lose the
+ * one thing the operator most wants to know, which is that the weather moves again at 12:00.
  *
  * It computes nothing. The order, the scores and the bands all arrive from the server already
  * decided — no view imports the scoring module, and none reimplements it (FF-002).
@@ -99,6 +111,10 @@ export function ForecastRevisionControl({
             <button
               type="button"
               onClick={() => onView(entry.forecast_revision)}
+              // Not yet applied means there is no stored ranking to fetch. Disabled rather
+              // than hidden: the forecast is real and coming, and it is only the *comparison*
+              // that does not exist yet.
+              disabled={!entry.ranked}
               aria-current={entry.forecast_revision === viewing}
               data-testid={`view-revision-${entry.forecast_revision}`}
             >
@@ -107,6 +123,15 @@ export function ForecastRevisionControl({
             <span className="revisions__time">forecast for {entry.valid_time}</span>
             {entry.forecast_revision === scenario.forecast_revision && (
               <span className="badge"> current</span>
+            )}
+            {!entry.ranked && (
+              <span
+                className="revisions__pending"
+                data-testid={`revision-not-applied-${entry.forecast_revision}`}
+              >
+                {' '}
+                — not applied yet, so there is no order to compare
+              </span>
             )}
           </li>
         ))}

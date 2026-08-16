@@ -82,6 +82,16 @@ export interface Integrity {
 export interface ForecastRevisionEntry {
   forecast_revision: number
   valid_time: string
+  /**
+   * Whether this revision has a ranking that can be read back (CHG-027).
+   *
+   * The list is every forecast **the prepared file carries** and it is complete from the moment
+   * the storm is loaded; a ranking exists only where somebody has applied one. Offering the two
+   * as one list is how the control came to draw a button whose only possible answer was the 404
+   * `technical-spec.md` §7.3 requires — a revision that is *coming* is not an order that can be
+   * compared.
+   */
+  ranked: boolean
 }
 
 export interface Scenario {

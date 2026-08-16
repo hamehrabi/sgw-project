@@ -1,7 +1,7 @@
 {
   "scenario_id": "STORM-TRACK-SHIFT",
   "storm_name": "Track shift",
-  "forecast_issued_at": "2026-08-15T00:00:00Z",
+  "forecast_issued_at": "2026-08-14T21:00:00Z",
   "files": ["assets.csv", "maintenance.csv", "weather.csv", "outages.csv"],
   "row_counts": {
     "assets.csv": 5,

@@ -57,6 +57,27 @@ def load(client, accounts) -> str:
     return created.json()["scenario_id"]
 
 
+def load_a_different_storm(client) -> str:
+    """A second, genuinely different scenario. Re-uploading the same files resolves to the same
+    storm (§5, replace in place), so a cross-storm test needs different bytes."""
+    created = client.post(
+        "/api/v1/scenarios",
+        data={"name": "Helene replay", "source_note": "prepared fixture"},
+        files=[("files", (n, c, "text/csv")) for n, c in fixture_files().items()],
+    )
+    assert created.status_code == 201, created.text
+    return created.json()["scenario_id"]
+
+
+# One insert, reused by every direct-against-the-database case below, so the refusals and the
+# permitted cases differ in exactly the column the rule is about and in nothing else.
+RIVAL_INSERT = (
+    "insert into risk_scores (id, scenario_id, asset_id, forecast_revision, score, band,"
+    " rank, reasons, unscored_reason, weight_set_version, computed_at)"
+    " values (?, ?, ?, ?, 99.0, 'High', 1, '[\"rival\"]', null, 'x', '2026-08-16T00:00:00Z')"
+)
+
+
 def ranking(client, scenario_id, revision=None) -> dict:
     query = "" if revision is None else f"?forecast_revision={revision}"
     response = client.get(f"/api/v1/scenarios/{scenario_id}/risks{query}")
@@ -232,21 +253,186 @@ def test_the_database_refuses_a_second_ranking_for_one_revision(application, cli
     ).fetchone()
     assert existing is not None
 
-    insert = (
-        "insert into risk_scores (id, scenario_id, asset_id, forecast_revision, score, band,"
-        " rank, reasons, unscored_reason, weight_set_version, computed_at)"
-        " values (?, ?, ?, ?, 99.0, 'High', 1, '[\"rival\"]', null, 'x', '2026-08-16T00:00:00Z')"
-    )
-
     with pytest.raises(sqlite3.IntegrityError):
-        connection.execute(insert, ("RS-rival", storm, existing["asset_id"], 0))
+        connection.execute(RIVAL_INSERT, ("RS-rival", storm, existing["asset_id"], 0))
         connection.commit()
     connection.rollback()
 
-    # The haystack: the same statement at a revision nothing has claimed is accepted, so the
-    # refusal above is the constraint rather than a malformed insert.
-    connection.execute(insert, ("RS-rival", storm, existing["asset_id"], 99))
+    # The haystack: the same statement at a revision the storm carries and nothing has ranked
+    # is accepted, so the refusal above is the constraint rather than a malformed insert.
+    connection.execute(RIVAL_INSERT, ("RS-rival", storm, existing["asset_id"], 1))
     connection.commit()
+
+
+def test_the_database_refuses_a_ranking_at_a_revision_the_storm_does_not_carry(
+    application, client, storm
+):
+    """CHG-028(b), and the invariant `scenario_forecast_cells` was given a migration before the
+    table AC-005 is actually about.
+
+    `risk_scores` carried no key at all on `(scenario_id, forecast_revision)`, so a ranking at
+    revision 42 of a storm that carries three forecasts was accepted and served with a 200 —
+    and `GET /scenarios/{id}` now reports which revisions have an order behind them (CHG-027),
+    which makes a ranking of a forecast that does not exist an answer the screen believes.
+    Issued directly against the database, with the permitted case beside it.
+
+    The refusal is read out of the message rather than taken as any `IntegrityError`, because
+    this insert also has a unique constraint and a foreign key it could plausibly trip: an
+    assertion that cannot fail for the reason it claims is the shape this repository keeps
+    finding, and CHG-026's own test was the fifth of them.
+    """
+    connection = application.state.db
+    ranking(client, storm)
+    asset_id = connection.execute(
+        "select asset_id from risk_scores where scenario_id = ? limit 1", (storm,)
+    ).fetchone()["asset_id"]
+
+    with pytest.raises(sqlite3.IntegrityError) as refused:
+        connection.execute(RIVAL_INSERT, ("RS-nowhere", storm, asset_id, 42))
+        connection.commit()
+    connection.rollback()
+    assert "must name a forecast revision this storm carries" in str(refused.value)
+
+    # The permitted case: revision 2 is a forecast this storm carries, so a row may name it.
+    connection.execute(RIVAL_INSERT, ("RS-nowhere", storm, asset_id, 2))
+    connection.commit()
+
+
+def test_the_database_refuses_a_ranking_that_names_another_storms_asset(
+    application, client, accounts, storm
+):
+    """CHG-019's remaining instance, recorded in that entry as knowingly unfixed and closed by
+    the rebuild CHG-028 was doing anyway.
+
+    `references assets (id)` proves an asset exists *somewhere*. CLAUDE.md calls a missing scope
+    *"a correctness bug — two storms blended into one ranking would look entirely plausible"*,
+    and this is the ranking table.
+    """
+    connection = application.state.db
+    ranking(client, storm)
+    other = load_a_different_storm(client)
+    assert other != storm
+    foreign_asset = connection.execute(
+        "select id from assets where scenario_id = ? limit 1", (other,)
+    ).fetchone()["id"]
+
+    with pytest.raises(sqlite3.IntegrityError) as refused:
+        connection.execute(RIVAL_INSERT, ("RS-crossed", storm, foreign_asset, 1))
+        connection.commit()
+    connection.rollback()
+    assert "FOREIGN KEY" in str(refused.value)
+
+    # The same statement against an asset that IS in this storm is accepted.
+    own_asset = connection.execute(
+        "select id from assets where scenario_id = ? limit 1", (storm,)
+    ).fetchone()["id"]
+    connection.execute(RIVAL_INSERT, ("RS-crossed", storm, own_asset, 1))
+    connection.commit()
+
+
+def test_the_database_refuses_a_delete_and_reinsert_of_an_earlier_revision(
+    application, client, storm
+):
+    """The half of *never rewrites n* that was not in the schema (CHG-028(a)).
+
+    TASK-006's own Constraints say *"not by `UPDATE`, not by delete-and-reinsert"*, and 010 held
+    only the first: `delete from risk_scores where forecast_revision = 0` was accepted, one
+    re-insert rewrote revision 0 into a one-row list, and `GET /risks?forecast_revision=0`
+    served it with a 200. The order a crew was placed against, changed underneath the decision
+    that names it.
+    """
+    connection = application.state.db
+    assert apply_next(client, storm).status_code == 201
+    before = stored_scores(connection, storm, 0)
+    assert before, "no revision-0 rows exist, so the refusal below would be vacuous"
+
+    with pytest.raises(sqlite3.IntegrityError) as refused:
+        connection.execute(
+            "delete from risk_scores where scenario_id = ? and forecast_revision = 0", (storm,)
+        )
+        connection.commit()
+    connection.rollback()
+
+    assert "never rewritten" in str(refused.value), (
+        f"refused by something else: {refused.value}"
+    )
+    assert stored_scores(connection, storm, 0) == before
+    # And the endpoint still serves the whole of it, which is the shape the review's mutation
+    # broke: one re-insert turned revision 0 into a one-row list served with a 200.
+    assert len(ranking(client, storm, revision=0)["items"]) == len(before)
+
+
+def test_deleting_a_whole_storm_still_works_and_takes_its_rankings_with_it(
+    application, client, storm
+):
+    """The operation the delete guard must not break — `technical-spec.md` §7.2's *delete or
+    replace a scenario*, and the reason 010 declined an unconditional `before delete` twin.
+
+    A cascade removes the parent row before applying the action to its children, so inside one
+    the guard's `when` clause is false and the rows go. **Asserted rather than reasoned about**,
+    because an ordering SQLite does not promise is exactly the kind of thing a test should hold
+    down: if a future version changes it, this turns red here instead of §7.2 turning red during
+    the incident it was meant to end.
+
+    **§7.2 is not built, and two other tables already stand in front of it** — both by decisions
+    older than this migration, and both named here so the setup below reads as deliberate rather
+    than as convenience. `decision_records.scenario_id` is `references scenarios (id)` with **no**
+    cascade (migration 006: *an audit row outlives the storm it describes*), so a storm whose
+    ranking has been **delivered** cannot be deleted at all; and `scenario_uploads` carries
+    `check (status <> 'ready' or scenario_id is not null)`, so the upload row has to go first.
+    Neither is the rule under test. What is under test is that CHG-028's trigger does not become
+    a third obstacle, and it is asserted on the narrowest state where the question is only that.
+    """
+    connection = application.state.db
+    assert apply_next(client, storm).status_code == 201
+    assert connection.execute(
+        "select count(*) from risk_scores where scenario_id = ?", (storm,)
+    ).fetchone()[0] > 0
+
+    connection.execute("delete from scenario_uploads where scenario_id = ?", (storm,))
+    connection.execute("delete from scenarios where id = ?", (storm,))
+    connection.commit()
+
+    for table in (
+        "risk_scores",
+        "assets",
+        "scenario_forecast_revisions",
+        "scenario_forecast_cells",
+    ):
+        assert connection.execute(
+            f"select count(*) from {table} where scenario_id = ?", (storm,)
+        ).fetchone()[0] == 0, f"{table} kept rows for a deleted storm"
+
+
+def test_deleting_one_asset_still_works_and_takes_only_its_ranks_with_it(
+    application, client, storm
+):
+    """The second cascade the guard must not break, and the narrower one.
+
+    `risk_scores.asset_id` cascades from `assets`, so the same `when` clause has to be false
+    when an asset is removed on its own while its storm stays. Nothing in `backend/` issues this
+    statement today — CHG-024 says so — which is precisely why the schema, not the absence of a
+    caller, is what has to allow it.
+    """
+    connection = application.state.db
+    assert apply_next(client, storm).status_code == 201
+    doomed = connection.execute(
+        "select id from assets where scenario_id = ? limit 1", (storm,)
+    ).fetchone()["id"]
+    total = connection.execute(
+        "select count(*) from risk_scores where scenario_id = ?", (storm,)
+    ).fetchone()[0]
+
+    connection.execute("delete from assets where id = ?", (doomed,))
+    connection.commit()
+
+    assert connection.execute(
+        "select count(*) from risk_scores where asset_id = ?", (doomed,)
+    ).fetchone()[0] == 0
+    # Two revisions' rows for that one asset, and nobody else's.
+    assert connection.execute(
+        "select count(*) from risk_scores where scenario_id = ?", (storm,)
+    ).fetchone()[0] == total - 2
 
 
 # --- More than one change, and the end of the series -------------------------------------
@@ -429,46 +615,143 @@ def test_applying_a_forecast_change_records_no_decision_and_moves_no_crew(
 # --- The durable half -----------------------------------------------------------------------
 
 
-def test_the_revision_and_its_forecasts_survive_a_restart(tmp_path, monkeypatch):
-    """`AGENT.md`: when a task introduces durable state, the restart test is part of the task.
+RESTART_PASSWORD = "correct-horse-battery-staple"
 
-    The forecast series and the revision pointer are that state. A series held in process
-    memory, or a pointer counted up from zero, is indistinguishable inside one process and
-    re-applies revision 1 over the top of itself after a restart.
+
+def gusts_by_code(body) -> dict[str, tuple]:
+    """Every asset's gust and the time it was issued, keyed by code.
+
+    This is the half of a ranking that comes out of `scenario_forecast_cells` rather than out
+    of `risk_scores`: `read_ranking` left-joins the cells, so a series that did not survive a
+    restart makes every one of these `(None, None)` while the stored order is untouched.
     """
+    return {
+        item["external_ids"][0]: (gust_of(item)["value"], gust_of(item)["observed_at"])
+        for item in body["items"]
+    }
+
+
+def restartable_storm(tmp_path, monkeypatch):
     from app.store import users
 
     database = tmp_path / "forecasts.db"
-
-    before = build_application(monkeypatch, database)
+    application = build_application(monkeypatch, database)
     users.create_user(
-        before.state.db,
+        application.state.db,
         name="Ops Manager",
         email="admin@sgw.example",
-        password="correct-horse-battery-staple",
+        password=RESTART_PASSWORD,
         role="admin",
     )
-    first = TestClient(before)
-    sign_in(first, "admin@sgw.example", "correct-horse-battery-staple")
-    created = first.post(
+    client = TestClient(application)
+    sign_in(client, "admin@sgw.example", RESTART_PASSWORD)
+    created = client.post(
         "/api/v1/scenarios",
         data={"name": "Track shift", "source_note": "prepared fixture"},
         files=[("files", (n, c, "text/csv")) for n, c in fixture_files(FIXTURE).items()],
     )
-    scenario_id = created.json()["scenario_id"]
-    at_zero = order(ranking(first, scenario_id))
+    assert created.status_code == 201, created.text
+    return database, application, client, created.json()["scenario_id"]
+
+
+def restart(monkeypatch, database, application):
+    application.state.db.close()
+    restarted = build_application(monkeypatch, database)
+    client = TestClient(restarted)
+    sign_in(client, "admin@sgw.example", RESTART_PASSWORD)
+    return restarted, client
+
+
+def test_the_revision_and_its_forecasts_survive_a_restart(tmp_path, monkeypatch):
+    """`AGENT.md`: when a task introduces durable state, the restart test is part of the task.
+
+    Done criterion 11 is *"the revision pointer **and the forecast series** survive a restart"*,
+    and the second half is the half that carries data. **This test used to assert only the two
+    earlier orders and the next revision number** — both served from stored `risk_scores` rows
+    that no restart could lose — so a series held anywhere but the database passed it. The
+    review's mutation was a `create temp table scenario_forecast_cells`, which shadows the real
+    one for every unqualified read: indistinguishable inside one process, and a second
+    application over the same file then re-ranks the whole storm to `ranked: 0, unscored: 5`
+    with every asset carrying *"no forecast covers this asset"* — still 201, still revision 2,
+    still green. **A restart that silently makes every asset unrankable is the screen CLAUDE.md
+    forbids reading as safety**, and this is the criterion that exists to catch it.
+
+    So the comparison is the **whole ranking**, values and all, not the order. The gust and its
+    `valid_time` come out of `scenario_forecast_cells` by a left join; if the cells are gone the
+    join misses and every one of them is null, whatever the stored order says.
+    """
+    database, application, first, scenario_id = restartable_storm(tmp_path, monkeypatch)
+
+    at_zero = ranking(first, scenario_id)
     assert apply_next(first, scenario_id).status_code == 201
-    at_one = order(ranking(first, scenario_id))
-    before.state.db.close()  # the restart
+    at_one = ranking(first, scenario_id)
+    # The haystack: there are forecast values to lose. Without this the comparisons below hold
+    # just as well between two rankings that both say nothing.
+    assert gusts_by_code(at_zero)[ALPHA] == (120, REVISION_0_AT)
+    assert gusts_by_code(at_one)[BRAVO] == (128, REVISION_1_AT)
+    assert all(gust != (None, None) for gust in gusts_by_code(at_one).values())
 
-    after = build_application(monkeypatch, database)
-    second = TestClient(after)
-    sign_in(second, "admin@sgw.example", "correct-horse-battery-staple")
+    restarted, second = restart(monkeypatch, database, application)
 
-    assert order(ranking(second, scenario_id, revision=0)) == at_zero
-    assert order(ranking(second, scenario_id, revision=1)) == at_one
+    # Whole items, not just the order — the order is `risk_scores.rank` and survives anything.
+    assert ranking(second, scenario_id, revision=0)["items"] == at_zero["items"]
+    assert ranking(second, scenario_id, revision=1)["items"] == at_one["items"]
+    assert gusts_by_code(ranking(second, scenario_id, revision=0))[ALPHA] == (120, REVISION_0_AT)
+
     # The pointer carried on rather than starting again: the next apply is revision 2.
     applied = apply_next(second, scenario_id)
     assert applied.status_code == 201, applied.text
     assert applied.json()["forecast_revision"] == 2
     assert applied.json()["previous_forecast_revision"] == 1
+    # And it re-ranked against a forecast that is still there. `ranked: 0, unscored: 5` is the
+    # shape of a storm whose series did not survive, and it answers 201 exactly like this one.
+    assert (applied.json()["ranked"], applied.json()["unscored"]) == (4, 1)
+    at_two = ranking(second, scenario_id, revision=2)
+    assert gusts_by_code(at_two)[ALPHA] == (132, REVISION_2_AT)
+    assert gusts_by_code(at_two)[CHARLIE] == (60, REVISION_1_AT)
+    assert find(at_two, ECHO)["score"] is None
+
+    restarted.state.db.close()
+
+
+def test_the_forecast_series_is_in_the_database_and_not_in_the_process(tmp_path, monkeypatch):
+    """The same property, asserted against the store rather than through the API.
+
+    Two applications, two connections, one file. Whatever the first process held in memory is
+    gone; what the second can read is what was actually written (ADR-002 — *a restart is not an
+    incident*). Asserted directly because it is the store's claim, and because a read served
+    from a cache the API happens to keep would satisfy the test above and not this one.
+    """
+    from app.store import forecasts
+
+    database, application, first, scenario_id = restartable_storm(tmp_path, monkeypatch)
+    for _ in range(2):
+        assert apply_next(first, scenario_id).status_code == 201
+
+    restarted, _ = restart(monkeypatch, database, application)
+    connection = restarted.state.db
+
+    assert [
+        (row["forecast_revision"], row["valid_time"])
+        for row in forecasts.revisions(connection, scenario_id)
+    ] == [(0, REVISION_0_AT), (1, REVISION_1_AT), (2, REVISION_2_AT)]
+    stored = {
+        (row["forecast_revision"], row["grid_cell_id"]): (
+            row["wind_gust_mph"],
+            row["valid_time"],
+        )
+        for row in connection.execute(
+            "select forecast_revision, grid_cell_id, wind_gust_mph, valid_time"
+            " from scenario_forecast_cells where scenario_id = ?",
+            (scenario_id,),
+        )
+    }
+    # Five cells at each of three revisions — every revision is a complete grid (CHG-025).
+    assert len(stored) == 15
+    assert stored[(0, "GC-A")] == (120.0, REVISION_0_AT)
+    assert stored[(1, "GC-B")] == (128.0, REVISION_1_AT)
+    assert stored[(2, "GC-A")] == (132.0, REVISION_2_AT)
+    # Carried forward, and still saying how old it is rather than claiming the revision's time.
+    assert stored[(2, "GC-C")] == (60.0, REVISION_1_AT)
+
+    restarted.state.db.close()

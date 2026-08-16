@@ -47,10 +47,27 @@ def save_series(connection, scenario_id: str, series, *, created_at: str) -> Non
 
 
 def revisions(connection, scenario_id: str) -> list[sqlite3.Row]:
-    """Every forecast revision this storm carries, in order."""
+    """Every forecast revision this storm carries, in order, and **which of them are ranked**.
+
+    The two are not the same list and reading them as one broke a screen (CHG-027). This table
+    holds the forecasts the *prepared file* carries — all of them, from the moment the storm is
+    loaded — while a ranking exists only for a revision somebody has applied. A control handed
+    the first list and told it was the second offers a button whose only possible answer is the
+    404 `technical-spec.md` §7.3 requires.
+
+    `ranked` is read out of `risk_scores` rather than inferred from `scenarios.forecast_revision`
+    on purpose: the pointer is one number and the rankings are the fact, and the review that
+    raised this found the two can disagree — a pointer moved directly to a revision nothing
+    ranked leaves the default `GET /risks` answering 404 while every screen still reads
+    *current*.
+    """
     return connection.execute(
-        "select forecast_revision, valid_time from scenario_forecast_revisions"
-        " where scenario_id = ? order by forecast_revision",
+        "select r.forecast_revision, r.valid_time,"
+        " exists (select 1 from risk_scores rs"
+        "         where rs.scenario_id = r.scenario_id"
+        "           and rs.forecast_revision = r.forecast_revision) as ranked"
+        " from scenario_forecast_revisions r"
+        " where r.scenario_id = ? order by r.forecast_revision",
         (scenario_id,),
     ).fetchall()
 
