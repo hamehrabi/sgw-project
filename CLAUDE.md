@@ -74,8 +74,8 @@ touching a line of code. Where a rule decides an *order*, a *resolution* or a *g
 fixture has to be one in which the wrong answers are different answers.
 
 **The gate is five commands, and the test suite is only one of them:**
-`pytest` (386) · `ruff` · `ci/fitness.py` (6 of 7 wired) · `ci/evals.py` (the quality floor) ·
-`playwright` (21, real Chromium against both processes).
+`pytest` (534) · `ruff` · `ci/fitness.py` (**7 of 7 wired**) · `ci/evals.py` (the quality floor) ·
+`playwright` (36, real Chromium against both processes).
 
 **Run the suite more than once before calling the gate green.** Five of fifteen clean runs were
 red before migration 008, from one root cause, and a suite run once looks green half the time.
@@ -252,9 +252,9 @@ python -m venv .venv
 cd frontend && npm install
 
 # the gate — the suite is NOT the gate on its own
-.venv/Scripts/python.exe -m pytest                       # 386 tests, 1 skipped
+.venv/Scripts/python.exe -m pytest                       # 534 tests, 1 skipped
 .venv/Scripts/python.exe -m ruff check backend spec/03-tests/05-executable ci
-.venv/Scripts/python.exe ci/fitness.py                   # FF-001, FF-002, FF-006
+.venv/Scripts/python.exe ci/fitness.py                   # FF-001..FF-007, all seven
 cd frontend && npx tsc --noEmit && npm run lint && npm run build
 cd frontend && npm run e2e     # Playwright starts BOTH processes; no mocks
 
@@ -284,9 +284,12 @@ because folding them into the test run is exactly how FF-002 decays while every 
 stays green. The trigger check runs *after* migrate and *before* deploy, and it is not a schema
 inspection: attempt an `UPDATE` on `decision_records` and require the database to refuse it.
 
-All seven fitness functions are currently marked **`Not wired yet`** in
-`spec/01-docs/04-technical-spec/fitness-functions.md`, and TASK-010 is the task that wires them.
-Do not edit that column to claim a gate nobody has built.
+**All seven fitness functions now run** (`spec/01-docs/04-technical-spec/fitness-functions.md`).
+FF-003 was the last, wired by TASK-010; **CHG-038** records the three things wiring it required
+deciding, including that *reads a source file* means an `open` and not a `stat` — without which
+its clause (b) forbids what its clause (c) requires. Do not edit that column to claim a gate
+nobody has built, and do not leave it claiming one nobody has retired: **every row's `Runs` cell
+moved only after the row was watched to fail.**
 
 ## Tests
 

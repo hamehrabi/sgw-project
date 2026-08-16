@@ -35,7 +35,56 @@
 
 | 2026-08-16 | **TASK-008 remediation, answering both Blocks at once** — migration **015** up and down, `store/dispatch.py`, `frontend/lib/dismissal.ts` (new), `frontend/lib/api.ts`, `views/DismissAlarmControl.tsx`, `frontend/playwright.config.ts`, `e2e/TASK-008.spec.ts`, `test_UTEST-011_dismissal_never_anonymous.py`, `test_UTEST-012_damage_location_aggregated.py` and `test_TASK-008-AC9_migration_014_up_and_down.py` | TASK-008 / REQ-F-008, REQ-F-009, AC-008, REQ-NF-007, ADR-002, ADR-004, CON-003, CHG-033…CHG-037 | The agent that fixed both Blocks — **not a reviewer, and this row is not an acceptance** (the note under TASK-005's remediation rows applies unchanged) | Requirement fit · Architecture fit · Security & validation · Test evidence · Change scope | **All seven findings across the two rounds are closed, each with the mutation that now makes it red recorded in `TASK-008.md`.** **The Block is answered in the store**: `decision_records_one_dismissal_per_report`, a partial `unique` index that creates no table and drops no trigger (**CHG-036**) — with the two service guards removed, an identical retry is now a `500` and **one** audit row instead of `201` twice and two. The test that *required* the opposite — `len(dismiss_record(connection)) == 2` — was not deleted: its report is dismissed by direct statement, which writes no audit row, so the permitted control is the only row and it proves exactly what it proved before. **The live whitespace hole is closed at the layer ADR-002 names**: one alphabet in `dispatch.BLANK_CODEPOINTS`, repeated in the schema as `char(...)` and in `frontend/lib/dismissal.ts`, with a test that reads all three and fails when any two disagree (**CHG-037**) — and the same alphabet closes `damage_reports_location_is_a_neighbourhood`, whose whitespace-only hole was being held shut by `json.dumps`' `ensure_ascii` default one module away. The bound's third and fourth copies are tied to the server's by a test that walks every `.ts`/`.tsx` file. The `coalesce` clause has the state it was written for — a report belonging to **no repair job**, dismissed through the endpoint — in both directions. The `dismiss` row is asserted at `GET /scenarios/{id}/decisions`. The storm clause has a case of its own. The dismissal's area figure has UTEST-012's three-way assertion, carried across the module boundary. **One defect was found while fixing and is in neither review:** the browser suite was racing itself — `fullyParallel: false` keeps one *file* serial while seven files ran in seven workers against one SQLite database, so ATEST-007's empty-board case was racing TASK-008's first case, which files a damage report; it won for two tasks and lost the moment the timing shifted. `workers: 1`. Suite **534 + 1 skipped**, `ruff`, `ci/fitness.py` (6 of 7 wired, FF-006 at 7 of 7, FF-004 refusing a real `UPDATE`), `ci/evals.py`, `tsc`, `lint`, `build` and all **36** Playwright specs pass. Two change entries raised and left **proposed**: **CHG-036** and **CHG-037**. | **Fixed — awaiting re-review** | Twenty-two proposed entries now need a human decision, and two of them contradict each other — CHG-035 says a dismissed report *“cannot move afterwards”* and CHG-034 says the narrowness that lets its `location` and `repair_job_id` move is deliberate; a re-review should start with the partial index against a concurrent second writer, and with `store/scenarios.py`, which still holds the six-ASCII alphabet CHG-037 replaced one module over |
 
+| 2026-08-16 | **TASK-010 output** — `ci/fitness.py` (FF-003 in two halves, the `OpenProbe` recorder, the route walk, the two vacuity guards), `fitness-functions.md`'s FF-003 row and its two paragraphs, `cicd-pipeline.md` stage 4, `TASK-010.md` | TASK-010 / FF-003, REQ-NF-003, AC-002, AC-010, CHG-013, CHG-038 | The developer (**also the author** — same Q-026 conflict, eleventh time) | Requirement fit · Architecture fit · Test evidence · Change scope | **The task was set as a question — can clause (c) be wired as a check that could really fail — and the answer is yes, in both processes.** A `fs.readFileSync` in `app/page.tsx`, which is a server component and a real Next.js render path, leaves `tsc`, `lint`, `build` and all **36** browser specs green; `views.integrity()` reading `manifest.json` on the render path of `GET /scenarios/{id}` leaves all **534** tests green. Both are red at the gate. **Clause (a) is failable too, and not in the sense CHG-013 examined**: its original reading — a screen breaks for want of a file — still cannot happen, but `if not integrity["intact"]: rows = []` in the ranking read empties the risk list on a lost file with the whole suite green, which is the empty screen CLAUDE.md forbids reading as safety, and clause (b) is what makes the removal observable enough to catch it. **Eight mutations, each applied, run, and reverted**, with `git status --short` checked after each; three of them are mutations of the check's own guards, because a canary that cannot be seen to fail is the same decoration as the gate it protects. **No application file was changed by this task.** One specification gap raised and left **proposed**: **CHG-038** — the register does not decide what *open every screen* means across a process line, how clause (a) is measured, or whether a `stat` is a read; left undecided, (b) and (c) contradict each other, because the notice (b) requires cannot be produced without looking at the filesystem (c) is read as forbidding. | **Accept** | CHG-038 and the twenty-two entries before it need a human decision; a later reviewer should start where this round is weakest — the frontend half of (c) is a text scan, and the picture comparison strips `integrity`, whose shape is asserted separately and only at baseline |
+
 **Decision values:** Accept · Accept with follow-up · Revise · Reject · Block
+
+### TASK-010 — the last fitness function, and the reason it took a decision rather than a script
+
+**Author and reviewer are the same process, for the eleventh time, and this row is an acceptance
+rather than a Block, which makes saying so more important rather than less.** Q-026 is unchanged:
+no real people exist for this prototype, one person holds every decision-owner role, and there is
+**no human between this work and its judgement**. What is offered instead of independence is
+evidence a later reader can re-run — every mutation is named in `TASK-010.md` with what it turned
+red and, more usefully, what it left **green**.
+
+**The brief for this task was not *wire FF-003*. It was *decide honestly whether FF-003 can be
+wired*, and leave it unwired with the reason if it cannot.** That is the right shape, and it is
+worth writing down why the answer came out the other way. CHG-013's argument was about a *file
+being read*: nothing on a render path opens one, so removing a file cannot break a screen. True,
+and still true. But a fitness function is not a prediction about which mistakes will be made — it
+is a fence around a decision, and the decision here (`technical-spec.md` §6, *every read is served
+from stored results*) can be broken in two directions. **A render path can start reading a file**,
+which clause (c) now catches in both processes. **And a screen can be made to depend on a file
+being there**, which is clause (a) once clause (b) gives the removal an effect. The second is the
+one this repository should expect: it is one line, it looks careful, and it fails safe-looking —
+an empty list rather than an error.
+
+**Three things had to be decided before the check could exist, and one of them was a real
+contradiction.** They are in CHG-038. The contradiction is worth repeating here because a reviewer
+will meet it before they meet the entry: `views.integrity()` calls `is_file()` on all five source
+files on the render path of `GET /scenarios/{id}`, so a literal reading of *no view reads a source
+file at render time* makes clause (c) forbid what clause (b) requires. The decision — **(c)
+forbids a file's contents reaching a response; asking whether it exists is what (b) is** — is a
+decision, not a discovery, and it is proposed rather than accepted.
+
+**What this round did not do, stated so the next reader does not have to find it.** The frontend
+half of (c) is a **text scan** of `frontend/app`, `frontend/views` and `frontend/lib` for ten
+spellings of a filesystem reach; it is FF-002(b)'s shape and it has FF-002(b)'s weakness — a
+render path determined to read a file can spell it in a way the list does not hold. The runtime
+half has no such gap and covers the backend only, because the Next.js server is not the process
+this gate starts. The picture comparison strips two keys: `data_age_hours`, which moves with the
+clock, and `integrity`, which is what the check is changing — so a field **added** to the
+integrity block is invisible to every clause except the shape assertion, which runs once, at
+baseline. And `ci/evals.py`, the other quality stage, is untouched by this task and unaffected
+by it.
+
+**Six reviews across four tasks have now each found something the previous one did not.** This
+row does not add to that count: it is a build, self-accepted, and the only reason it is `Accept`
+rather than `In review` is that the task's whole output is a gate whose every clause was watched
+to fail before its register row moved. **A gate that cannot fail governs nothing** — the sentence
+CHG-010 and CHG-013 both record — and the way to earn the opposite claim is to break it on
+purpose, eight times, and write down what stayed green.
 
 ### The remediation of both TASK-008 Blocks — seven findings, one migration, and a race nobody had looked for
 

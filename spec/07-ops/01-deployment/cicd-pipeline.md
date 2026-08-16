@@ -31,7 +31,7 @@ forward?*
 1. Install:   npm ci
 2. Lint:      npm run lint          # eslint + prettier
 3. Test:      npx vitest run       # unit + integration
-4. FITNESS:   npm run fitness      # FF-001..FF-006.
+4. FITNESS:   python ci/fitness.py # FF-001..FF-007, all seven wired.
               A SEPARATE STAGE, not part of Test.
 5. Build:     npm run build        # then the container image
 6. Migrate:   npx drizzle-kit migrate
@@ -47,9 +47,10 @@ something in this system can be silently undone.
 
 **Stage 4 — fitness functions as their own stage.** The suite proves the features behave; the
 fitness functions prove the structure has not moved. Folding them into `Test` is how FF-002 —
-no view imports the scoring module — decays while every feature test stays green. They are
-`Not wired yet` in the register today; TASK-010 wires them, and until it does this stage is a
-manual check that the pipeline must not pretend to run.
+no view imports the scoring module — decays while every feature test stays green. **All seven
+now run in this stage**, the last of them wired by TASK-010 (CHG-038); the paragraph that stood
+here said they were `Not wired yet` and that this stage was a manual check the pipeline must not
+pretend to run. `python ci/fitness.py` exits 1 and names the failure, so the stage blocks.
 
 **Stage 7 — the trigger check, after migrate and before deploy.** BR-004's only enforcement is
 two triggers (ADR-004), a migration can drop one, and nothing else in the pipeline would notice.
@@ -113,7 +114,7 @@ that fails fast delivers every benefit that matters: the same stages, in the sam
 the same merges. The version that ships here has two extra lines:
 
 ```bash
-echo "== fitness ==" && <FF-001..FF-006>
+echo "== fitness ==" && python ci/fitness.py     # FF-001..FF-007
 echo "== triggers ==" && <attempt an UPDATE on decision_records; require refusal>
 ```
 

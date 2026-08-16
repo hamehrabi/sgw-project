@@ -17,7 +17,7 @@
 | TASK-007 | Record a crew placement against the ranking | REQ-F-005, BR-001 | P1 | TASK-003 | **In review** | agent | E2E-001, FTEST-005 (the placement half) |
 | TASK-008 | Dismiss a false alarm in one action | REQ-F-008, REQ-F-009, AC-008 | P1 | TASK-005 | **In review** | agent | UTEST-011 |
 | TASK-009 | Switch between several loaded storms | REQ-F-010 | P2 | TASK-002 | **In review** | agent | ITEST-005 |
-| TASK-010 | Wire the **remaining** fitness function into the build gate | FF-003 | P1 | — | Not started | human | — (the register is the assertion) |
+| TASK-010 | Wire the **remaining** fitness function into the build gate | FF-003 | P1 | — | **Done** | agent | — (the register is the assertion) |
 
 **Status values:** Not started · In progress · Blocked · In review · Done · Rejected
 
@@ -279,6 +279,34 @@ different reason — `traceability.md` already puts that requirement on TASK-002
 this is the first task in which a damage location exists to be aggregated, so it is the first
 task where the rule can be broken.
 
+**TASK-010 is Done, and FF-003 is wired — the question it was set was whether it could be.**
+`fitness-functions.md` said clause (a) *cannot fail*: nothing on a render path opens a file, so
+removing one changes nothing an assertion can see. That is still true of the clause as CHG-013
+read it, and the honest answer turned out to be that the failure comes from the **other**
+direction. Clause **(c)** can fail and was made to: a `fs.readFileSync` in `app/page.tsx` — a
+server component, a real Next.js render path — leaves `tsc`, `lint`, `build` and all 36 browser
+cases **green**, and `views.integrity()` reading `manifest.json` on the render path of
+`GET /scenarios/{id}` leaves all **534** tests green. Clause **(a)** can fail too, once clause
+(b) makes the removal observable: `if not integrity["intact"]: rows = []` in the ranking read
+empties the risk list on a lost `outages.csv` with the whole suite still green — the empty screen
+CLAUDE.md forbids reading as safety. **Nothing in `backend/` or `frontend/` was changed by this
+task**; every application edit in it was a mutation, applied and reverted.
+
+**The check's own two ways of passing for nothing are guarded, and the guards were mutation-checked
+too.** The storm's five files must be on disk before their absence from the reads means anything;
+the recorder is shown a real source file through all three of Python's open doors before its
+silence is believed. And the route walk found the lesson `AGENT.md` recorded on 2026-08-16 while
+this check was being written: a flat read of `application.routes` sees four documentation routes
+and **none** of the seventeen endpoints, because this FastAPI wraps `include_router` in a
+`_IncludedRouter` whose own `path` is `None`. Five named routes must now be in what the walk found.
+
+**One change entry is open against this task and it is not accepted.** **CHG-038** — moving
+FF-003's `Runs` cell required deciding three things the register does not decide: what *open every
+screen* is when the views are in another process, how clause (a) is measured now that its original
+sense cannot occur, and — the one that is a real contradiction if left undecided — that *reads a
+source file* means an `open` and not a `stat`, because `integrity()` must stat all five files on a
+render path to satisfy clause (b). Twenty-three entries are now open and none is accepted.
+
 **TASK-010 shrank, and TASK-002 grew, at that review** (CHG-010). FF-001 and FF-006 move into
 TASK-002, which is the task that first creates enough modules for an import cycle to exist and
 the seven-defect fixture FF-006 checks against — wiring them there is cheaper than retrofitting a
@@ -311,7 +339,11 @@ rule, endpoint and screen for one capability — so each one is reviewable by us
 the only review that catches *built the wrong thing*, which is the exact risk assumptions A2 and
 A3 name.
 
-## Only TASK-001 is written as a file, on purpose
+## Only TASK-001 is written as a file, on purpose — and every task since has written its own
+
+`02-tasks/02-task-files/` now holds ten, one per task, each written when its task was picked up.
+The paragraph below is why there was one at the start, and it still governs: the detail of a task
+depends on what the task before it produced.
 
 `02-tasks/02-task-files/` holds one task file, not ten. With thin vertical slices and an agent
 working one task at a time, TASK-003's detail depends on what TASK-002 actually produced —
