@@ -6,12 +6,15 @@
  * cannot import it even by accident (FF-002).
  */
 
-export type Role = 'admin' | 'user'
+export type Role = 'admin' | 'operator'
 
 export interface Identity {
   user_id: string
   name: string
   role: Role
+  /** CHG-053: true while the password is an admin-set temporary one. The shell shows the
+   *  change screen and nothing else; the server refuses every other route regardless. */
+  must_change_password: boolean
 }
 
 export interface ApiError {
@@ -22,11 +25,15 @@ export interface ApiError {
 export class RequestFailed extends Error {
   readonly status: number
   readonly code: string
+  /** The whole refusal body — some refusals carry more than a sentence (the summary
+   *  approval's 409 carries the verification table that blocked it). */
+  readonly body: ApiError & Record<string, unknown>
 
-  constructor(status: number, body: ApiError) {
+  constructor(status: number, body: ApiError & Record<string, unknown>) {
     super(body.message)
     this.status = status
     this.code = body.code
+    this.body = body
   }
 }
 
@@ -48,7 +55,7 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   }))
 
   if (!response.ok) {
-    throw new RequestFailed(response.status, body as ApiError)
+    throw new RequestFailed(response.status, body as ApiError & Record<string, unknown>)
   }
   return body as T
 }
@@ -287,6 +294,9 @@ export interface DamageReport {
   reported_at: string
   reported_by: string
   status: 'open' | 'duplicate' | 'dismissed'
+  /** CHG-050: what this call accounts for. Null is "the caller did not say" — not zero. */
+  customers_out: number | null
+  asset_is_critical: boolean
 }
 
 export interface RepairJob {
@@ -308,6 +318,13 @@ export interface RepairJob {
   report_count: number
   /** Reports dismissed as false alarms, so a job with nothing open reads as explained. */
   dismissed_report_count: number
+  /**
+   * CHG-050: derived from IMPACT — a critical facility among the open reports' assets,
+   * then customers accounted for — and never from a risk score. The frozen vocabulary:
+   * High / Medium / Low, never "Critical", never "Standard".
+   */
+  priority: 'High' | 'Medium' | 'Low'
+  customers_out: number
   reports: DamageReport[]
 }
 
@@ -355,10 +372,19 @@ export const dispatch = {
   board: (id: string) => request<Board>(`/api/v1/scenarios/${id}/jobs`),
 
   /** Two reports at one location join one job — decided by the server, never by this list. */
-  fileReport: (id: string, neighbourhood: string, assetId: string | null) =>
+  fileReport: (
+    id: string,
+    neighbourhood: string,
+    assetId: string | null,
+    customersOut: number | null = null,
+  ) =>
     request<DamageReport>(`/api/v1/scenarios/${id}/damage-reports`, {
       method: 'POST',
-      body: JSON.stringify({ neighbourhood, asset_id: assetId }),
+      body: JSON.stringify({
+        neighbourhood,
+        asset_id: assetId,
+        customers_out: customersOut,
+      }),
     }),
 
   /**
@@ -422,7 +448,7 @@ export const scenarios = {
       code: 'unreachable',
       message: 'We could not reach the server. Please try again.',
     }))
-    if (!response.ok) throw new RequestFailed(response.status, body as ApiError)
+    if (!response.ok) throw new RequestFailed(response.status, body as ApiError & Record<string, unknown>)
     return body as { scenario_id: string; forecast_revision: number }
   },
 }
@@ -438,4 +464,215 @@ export const auth = {
   current: () => request<Identity>('/api/v1/auth/session'),
 
   signOut: () => request<void>('/api/v1/auth/session', { method: 'DELETE' }),
+
+  /** CHG-053: replace the caller's own password. The current one is verified first. */
+  changePassword: (currentPassword: string, newPassword: string) =>
+    request<void>('/api/v1/auth/password', {
+      method: 'POST',
+      body: JSON.stringify({ current_password: currentPassword, new_password: newPassword }),
+    }),
+}
+
+// --- The interface rebuild's reads and records (CHG-040..CHG-054) -------------------------
+
+export interface Finding {
+  finding_id: string
+  defect: number
+  code: string
+  subject: string
+  message: string
+  affected_file: string
+  needs_decision: boolean
+  resolution: string | null
+  resolved_by: string | null
+  resolved_at: string | null
+}
+
+export interface FindingsPage {
+  scenario_id: string
+  items: Finding[]
+  needs_decision_count: number
+  total: number
+}
+
+/** One side of a withheld merge, in the fields the comparison card shows. */
+export interface MatchRecord {
+  id: string
+  name: string
+  type: string
+  condition: string | null
+  condition_observed_at: string | null
+  install_year: number | null
+}
+
+export interface MatchCandidate {
+  candidate_id: string
+  asset_id: string
+  map_record: MatchRecord
+  candidate_record: MatchRecord
+  /** A word, never a percentage: the rule is a position threshold and a name comparison. */
+  confidence: 'high' | 'moderate'
+  resolution: 'pending' | 'match' | 'not_match'
+  resolved_by: string | null
+  resolved_at: string | null
+}
+
+export interface MatchQueue {
+  scenario_id: string
+  items: MatchCandidate[]
+  pending_count: number
+  total: number
+}
+
+export interface Depot {
+  service_area_id: string
+  name: string
+  customer_count: number
+  crews: number
+}
+
+export interface StagingPlan {
+  scenario_id: string
+  depots: Depot[]
+  /** Context, not a recommendation: no per-depot figure can be defended (CHG-049). */
+  high_risk_count: number
+  recorded_at: string | null
+  recorded_by: string | null
+  forecast_revision: number | null
+}
+
+export interface SummaryVerificationEntry {
+  kind: 'figure' | 'noun' | 'vocabulary'
+  token: string
+  allowed: boolean
+  platform_value: unknown
+}
+
+export interface Summary {
+  summary_id: string
+  scenario_id: string
+  state: 'Draft' | 'Approved' | 'Sent'
+  draft_text: string
+  approved_text: string | null
+  /** "Drafted from platform data" survived the verifier; "Assembled" is the fallback. */
+  label: 'Drafted from platform data' | 'Assembled from platform data'
+  source_figures: Record<string, unknown>
+  verification: { ok: boolean; entries: SummaryVerificationEntry[] }
+  drafted_at: string
+  drafted_by: string
+  approved_by: string | null
+  approved_at: string | null
+}
+
+export interface ActivityEntry {
+  kind: 'human' | 'system'
+  text: string
+  occurred_at: string
+}
+
+export interface MovementItem {
+  asset_id: string
+  previous_rank: number | null
+  current_rank: number | null
+  band: 'High' | 'Medium' | 'Low' | null
+  reason_factor: string
+  reason_detail: string
+  previous_label: string
+}
+
+export interface Movement {
+  scenario_id: string
+  forecast_revision: number
+  /** True at revision 0: there is no earlier order, and the strip says so plainly. */
+  first_ranking: boolean
+  previous_label: string | null
+  items: MovementItem[]
+  moved_up_high: number
+}
+
+export const insights = {
+  findings: (id: string) => request<FindingsPage>(`/api/v1/scenarios/${id}/findings`),
+
+  resolveFinding: (id: string, findingId: string, resolution: string) =>
+    request<Finding>(`/api/v1/scenarios/${id}/findings/resolve`, {
+      method: 'POST',
+      body: JSON.stringify({ finding_id: findingId, resolution }),
+    }),
+
+  matches: (id: string) => request<MatchQueue>(`/api/v1/scenarios/${id}/matches`),
+
+  resolveMatch: (id: string, candidateId: string, resolution: 'match' | 'not_match') =>
+    request<MatchCandidate>(`/api/v1/scenarios/${id}/matches/resolve`, {
+      method: 'POST',
+      body: JSON.stringify({ candidate_id: candidateId, resolution }),
+    }),
+
+  staging: (id: string) => request<StagingPlan>(`/api/v1/scenarios/${id}/staging`),
+
+  /** Records counts a person chose. Nothing is dispatched — there is no path (BR-001). */
+  recordStaging: (id: string, forecastRevision: number, depots: { service_area_id: string; crews: number }[]) =>
+    request<StagingPlan>(`/api/v1/scenarios/${id}/staging`, {
+      method: 'POST',
+      body: JSON.stringify({ forecast_revision: forecastRevision, depots }),
+    }),
+
+  summary: (id: string) =>
+    request<{ scenario_id: string; summary: Summary | null }>(
+      `/api/v1/scenarios/${id}/summary`,
+    ),
+
+  draftSummary: (id: string) =>
+    request<Summary>(`/api/v1/scenarios/${id}/summary/draft`, { method: 'POST' }),
+
+  approveSummary: (id: string, summaryId: string, approvedText: string) =>
+    request<Summary>(`/api/v1/scenarios/${id}/summary/approve`, {
+      method: 'POST',
+      body: JSON.stringify({ summary_id: summaryId, approved_text: approvedText }),
+    }),
+
+  markSummarySent: (id: string, summaryId: string) =>
+    request<Summary>(`/api/v1/scenarios/${id}/summary/send`, {
+      method: 'POST',
+      body: JSON.stringify({ summary_id: summaryId }),
+    }),
+
+  activity: (id: string) =>
+    request<{ scenario_id: string; items: ActivityEntry[] }>(
+      `/api/v1/scenarios/${id}/activity`,
+    ),
+
+  movement: (id: string) => request<Movement>(`/api/v1/scenarios/${id}/movement`),
+
+  /** The bundled dataset, through the same parse path as a real upload. Admin only. */
+  loadSample: () =>
+    request<{ scenario_id: string; forecast_revision: number }>('/api/v1/scenarios/sample', {
+      method: 'POST',
+    }),
+
+  /**
+   * One person's decision about one asset's rank (CHG-055). Recorded, appended, never
+   * an action: a Dismiss records disagreement with a rank — it does not hide the asset.
+   */
+  triage: (
+    id: string,
+    assetId: string,
+    forecastRevision: number,
+    action: 'Accept' | 'Adjust' | 'Dismiss',
+    note: string | null,
+  ) =>
+    request<{
+      decision_record_id: string
+      action: string
+      asset_code: string
+      forecast_revision: number
+      occurred_at: string
+    }>(`/api/v1/scenarios/${id}/triage`, {
+      method: 'POST',
+      body: JSON.stringify({
+        asset_id: assetId,
+        forecast_revision: forecastRevision,
+        action,
+        note,
+      }),
+    }),
 }

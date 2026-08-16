@@ -33,14 +33,14 @@ export function StalenessBanner({ scenario }: { scenario: Scenario }) {
 
   if (!scenario.stale) {
     return (
-      <p className="data-age" data-testid="data-age">
+      <p className="text-[12px] text-muted" data-testid="data-age">
         Forecast issued {issued} — {age}.
       </p>
     )
   }
 
   return (
-    <div className="staleness" role="status" data-testid="staleness-banner">
+    <div className="rounded-card border border-medium-fg/30 bg-medium-bg px-4 py-3 text-[13px] text-medium-fg" role="status" data-testid="staleness-banner">
       <strong>This picture is {age}.</strong> Forecast issued {issued}. Anything older than{' '}
       {scenario.stale_after_hours} hours means a newer forecast probably exists and is not
       shown here.

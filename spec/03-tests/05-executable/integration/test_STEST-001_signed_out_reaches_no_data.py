@@ -43,6 +43,7 @@ DATA_ROUTES = [
     ("POST", "/api/v1/scenarios/SCEN-1/summary/send"),
     ("GET", "/api/v1/scenarios/SCEN-1/activity"),
     ("GET", "/api/v1/scenarios/SCEN-1/movement"),
+    ("POST", "/api/v1/scenarios/SCEN-1/triage"),
     ("POST", "/api/v1/scenarios/sample"),
     # The password change is auth rather than data, and it is guarded too: it is the one
     # route a temporary-password holder may reach, not a route a signed-out caller may.

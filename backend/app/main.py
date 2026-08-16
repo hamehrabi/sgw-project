@@ -21,6 +21,7 @@ from app.api import (
     scenarios,
     staging,
     summaries,
+    triage,
 )
 from app.api.middleware import RequestContext, SessionGuard
 from app.api.rate_limit import RateLimiter
@@ -56,6 +57,7 @@ def create_app() -> FastAPI:
     application.include_router(staging.router)
     application.include_router(summaries.router)
     application.include_router(activity.router)
+    application.include_router(triage.router)
 
     # Added inner-first: the last one added is the outermost, so every request gets a
     # correlation id and a safe failure before it reaches the session check.

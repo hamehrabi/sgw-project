@@ -20,12 +20,12 @@ export function ScenarioIntegrityNotice({
   role,
 }: {
   integrity: Integrity
-  role: 'admin' | 'user'
+  role: 'admin' | 'operator'
 }) {
   if (integrity.intact || role !== 'admin') return null
 
   return (
-    <div className="integrity" role="status" data-testid="integrity-notice">
+    <div className="rounded-card border border-line bg-rail px-4 py-3 text-[13px] text-ink-secondary" role="status" data-testid="integrity-notice">
       <strong>Source files missing:</strong> {integrity.missing_files.join(', ')}. The picture
       below is unaffected — it is served from stored records. What this breaks is{' '}
       {integrity.affects.join(' and ')}: restore the files from backup before relying on

@@ -21,8 +21,19 @@ from datetime import date, timedelta
 
 TYPES = ("substation", "line", "plant", "pump")
 FLOOD_ZONES = ("VE", "AE", "X", "X", "AE")
+# Named because a depot is a service area (CHG-049) and a person stages crews against a
+# name, not a code. Generic compass districts - invented geography stays out.
+AREA_NAMES = (
+    "North Depot", "East Depot", "South Depot", "West Depot", "Harbor District",
+    "Uplands District", "River District", "Lakeside District", "Central District",
+    "Foothills District", "Coastal District", "Valley District",
+)
 SERVICE_AREAS = [
-    {"service_area_id": f"SA-{index:02d}", "customer_count": 4000 + index * 850}
+    {
+        "service_area_id": f"SA-{index:02d}",
+        "name": AREA_NAMES[index - 1],
+        "customer_count": 4000 + index * 850,
+    }
     for index in range(1, 13)
 ]
 ISSUED_AT = "2026-08-15T00:00:00Z"
@@ -72,6 +83,8 @@ def synthetic_scenario(
                     rating,
                     source,
                     "" if unscorable else observed.isoformat(),
+                    # CON-003's one permitted boolean; the queue's impact order reads it.
+                    "1" if index % 11 == 0 else "",
                 ]
             )
         )
@@ -109,7 +122,7 @@ def synthetic_scenario(
 
     files = {
         "assets.csv": "asset_id,name,type,lat,lon,install_year,flood_zone,condition_rating,"
-        "condition_source,condition_date\n" + "\n".join(asset_rows) + "\n",
+        "condition_source,condition_date,is_critical_facility\n" + "\n".join(asset_rows) + "\n",
         "weather.csv": "grid_cell_id,asset_id,valid_time,wind_gust_mph,rainfall_in\n"
         + "\n".join(weather_rows) + "\n",
         "maintenance.csv": "asset_id,inspection_date,condition_rating,notes\n"

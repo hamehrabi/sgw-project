@@ -61,6 +61,7 @@ async function signIn(page: Page, email = 'ops@sgw.example') {
  * behaves the same whether it runs alone or after the four specs before it.
  */
 async function load(page: Page, storm: typeof HELENE) {
+  await page.getByRole('button', { name: 'Load storm data' }).click()
   await page.getByLabel('Storm name').fill(storm.name)
   await page.getByLabel('Where this came from').fill(storm.note)
   await page.setInputFiles(
@@ -117,6 +118,7 @@ test('the source note a person types is the source note the switcher shows', asy
    * what reaches it is not the panel's own fallback for an admin who typed nothing.
    */
   await signIn(page)
+  await page.getByRole('button', { name: 'Load storm data' }).click()
   await page.getByLabel('Storm name').fill('Switcher rehearsal')
   await page.getByLabel('Where this came from').fill('Typed by hand for the switcher')
   await page.setInputFiles('#storm-files', anUnsharedStorm())

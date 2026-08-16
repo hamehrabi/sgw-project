@@ -14,6 +14,9 @@
 
 import { useState } from 'react'
 
+import { Button } from '@/components/ui/button'
+import { Card, CardContent } from '@/components/ui/card'
+import { Input, Label } from '@/components/ui/field'
 import { auth, Identity, RequestFailed } from '@/lib/api'
 
 export function SignInForm({ onSignedIn }: { onSignedIn: (identity: Identity) => void }) {
@@ -42,51 +45,60 @@ export function SignInForm({ onSignedIn }: { onSignedIn: (identity: Identity) =>
   }
 
   return (
-    <form onSubmit={submit} className="sign-in" data-testid="sign-in-form">
-      <p className="sign-in__lede">
-        Sign in to load a storm, read the ranking, and record what you decide.
-      </p>
+    <Card>
+      <CardContent className="pt-5">
+        <form onSubmit={submit} data-testid="sign-in-form" className="space-y-4">
+          <p className="text-[13px] leading-relaxed text-muted">
+            Sign in to load a storm, read the ranking, and record what you decide.
+          </p>
 
-      <label htmlFor="email">Email</label>
-      <input
-        id="email"
-        name="email"
-        type="email"
-        autoComplete="username"
-        required
-        value={email}
-        onChange={(event) => setEmail(event.target.value)}
-      />
+          <div>
+            <Label htmlFor="email">Email</Label>
+            <Input
+              id="email"
+              name="email"
+              type="email"
+              autoComplete="username"
+              required
+              value={email}
+              onChange={(event) => setEmail(event.target.value)}
+            />
+          </div>
 
-      <label htmlFor="password">Password</label>
-      <input
-        id="password"
-        name="password"
-        type="password"
-        autoComplete="current-password"
-        required
-        value={password}
-        onChange={(event) => setPassword(event.target.value)}
-      />
+          <div>
+            <Label htmlFor="password">Password</Label>
+            <Input
+              id="password"
+              name="password"
+              type="password"
+              autoComplete="current-password"
+              required
+              value={password}
+              onChange={(event) => setPassword(event.target.value)}
+            />
+          </div>
 
-      {refusal && (
-        <p role="alert" className="sign-in__refusal">
-          {refusal}
-        </p>
-      )}
+          {refusal && (
+            <p role="alert" className="text-[13px] text-high-fg">
+              {refusal}
+            </p>
+          )}
 
-      <button type="submit" disabled={submitting}>
-        {submitting ? 'Signing in…' : 'Sign in'}
-      </button>
+          <Button type="submit" variant="primary" className="w-full" disabled={submitting}>
+            {submitting ? 'Signing in…' : 'Sign in'}
+          </Button>
 
-      {/* Said out loud rather than left as three absent links a person hunts for. Each is
-          absent by a recorded decision: accounts are created on the host
-          (`security-specification.md` §7), a reset is admin-performed (CHG-004), and a second
-          factor is P1 rather than version one (SEC-A-006). */}
-      <p className="sign-in__note">
-        Accounts are created by an administrator — there is no sign-up, and no self-service
-        password reset. If you cannot get in, ask an administrator to set a temporary password.
-      </p>
-    </form>
+          {/* Said out loud rather than left as three absent links a person hunts for. Each
+              is absent by a recorded decision: accounts are created on the host
+              (`security-specification.md` §7), a reset is admin-performed (CHG-004), and a
+              second factor is P1 rather than version one (SEC-A-006). */}
+          <p className="border-t border-line pt-3 text-[12px] leading-relaxed text-muted">
+            Accounts are created by an administrator — there is no sign-up, and no
+            self-service password reset. If you cannot get in, ask an administrator to set
+            a temporary password.
+          </p>
+        </form>
+      </CardContent>
+    </Card>
   )
 }

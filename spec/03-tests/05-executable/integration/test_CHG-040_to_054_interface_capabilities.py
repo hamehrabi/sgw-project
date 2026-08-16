@@ -3,7 +3,6 @@ the API against a live application — and each with the mutation it would take 
 noted beside the assertion that catches it.
 """
 
-import json
 import sqlite3
 
 import pytest
@@ -199,11 +198,10 @@ def test_after_a_forecast_change_movement_is_the_diff_of_the_two_stored_rankings
     # apply against it. The synthetic storm carries a series — the same generator
     # PTEST-001 re-ranks — and it needs the shipped size limits, still read from
     # configuration rather than hard-coded.
+    from app.store import users
     from conftest import build_application
     from fastapi.testclient import TestClient
     from synthetic import synthetic_scenario
-
-    from app.store import users
 
     application = build_application(
         monkeypatch,

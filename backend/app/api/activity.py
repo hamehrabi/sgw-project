@@ -45,6 +45,18 @@ def _decision_entry(row, names) -> dict | None:
         verb = {"accept": "accepted", "change": "asked for a change to", "reject": "rejected"}[
             kind
         ]
+        if row["subject_type"] == "asset_ranking":
+            # CHG-055, in CHG-054's exact permitted shape: the human, the verb, the
+            # asset. "J. Ruiz accepted the ranking for Bayside Substation" — a person
+            # deciding, never the system flagging.
+            action = payload.get("action", verb)
+            code = payload.get("asset_code", "an asset")
+            phrased = {
+                "Accept": f"{actor} accepted the ranking for {code}",
+                "Adjust": f"{actor} adjusted the ranking for {code}",
+                "Dismiss": f"{actor} dismissed the ranking for {code}",
+            }.get(action, f"{actor} {verb} the ranking for {code}")
+            return {"kind": "human", "text": phrased, "occurred_at": row["occurred_at"]}
         return {
             "kind": "human",
             "text": f"{actor} {verb} the ranking",

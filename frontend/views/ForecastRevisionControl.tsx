@@ -75,7 +75,7 @@ export function ForecastRevisionControl({
   const pending = scenario.forecast_revisions.filter((entry) => !entry.ranked)
 
   return (
-    <section className="revisions" data-testid="forecast-revisions">
+    <section className="rounded-card border border-line bg-rail p-3 text-[13px]" data-testid="forecast-revisions">
       <div>
         <strong>Forecast revision {scenario.forecast_revision}</strong>
         {viewing !== scenario.forecast_revision && (
@@ -91,19 +91,20 @@ export function ForecastRevisionControl({
         onClick={apply}
         disabled={state === 'applying' || nothingFurther}
         data-testid="apply-forecast"
+        className="mt-2 inline-flex h-8 items-center rounded-card border border-line bg-background px-3 text-[13px] font-medium hover:bg-panel disabled:pointer-events-none disabled:opacity-50"
       >
         {state === 'applying' ? 'Re-ranking…' : 'Apply the next forecast change'}
       </button>
 
       {nothingFurther && (
-        <p data-testid="no-further-forecast">
+        <p data-testid="no-further-forecast" className="mt-2 text-[12px] text-muted">
           This storm carries no forecast after revision {scenario.forecast_revision}. A newer
           forecast arrives by loading a newer prepared scenario.
         </p>
       )}
 
       {state === 'error' && (
-        <p role="alert" data-testid="forecast-error">
+        <p role="alert" data-testid="forecast-error" className="mt-2 text-[12px] text-high-fg">
           {message}
         </p>
       )}
@@ -119,7 +120,7 @@ export function ForecastRevisionControl({
        * is coming is a real fact and hiding it would misrepresent the storm. They are stated
        * **as a count**, which is the same fact at the size it deserves. */}
       {pending.length > 0 && (
-        <p className="revisions__lede" data-testid="revisions-pending">
+        <p className="mt-2 text-[12px] text-muted" data-testid="revisions-pending">
           {pending.length} of this storm&rsquo;s {scenario.forecast_revisions.length} forecasts
           have not been applied. They are listed because the weather moves again; each becomes
           comparable only once it has an order behind it.
@@ -135,7 +136,7 @@ export function ForecastRevisionControl({
         * person can actually compare — on the screen they came to compare them on. They are
         * chips now, wrapped, with the explanation stated once above and kept per-revision for
         * anyone reading one on its own. */}
-      <ul className="revisions__list">
+      <ul className="mt-2 flex max-h-24 flex-wrap items-center gap-x-3 gap-y-1.5 overflow-y-auto pr-1">
         {scenario.forecast_revisions.map((entry) => (
           <li key={entry.forecast_revision}>
             <button
@@ -149,18 +150,18 @@ export function ForecastRevisionControl({
               title={`forecast for ${entry.valid_time}`}
               className={
                 entry.forecast_revision === viewing
-                  ? 'revisions__chip is-viewing'
-                  : 'revisions__chip'
+                  ? 'inline-flex items-center rounded-full border border-teal bg-teal-soft px-2.5 py-0.5 text-[12px] font-medium text-teal-deep'
+                  : 'inline-flex items-center rounded-full border border-line bg-background px-2.5 py-0.5 text-[12px] hover:bg-panel disabled:opacity-50'
               }
               data-testid={`view-revision-${entry.forecast_revision}`}
             >
               Rev {entry.forecast_revision}
               {entry.forecast_revision === scenario.forecast_revision && ' · current'}
             </button>
-            <span className="revisions__time">{entry.valid_time}</span>
+            <span className="ml-1 text-[11px] text-faint">{entry.valid_time}</span>
             {!entry.ranked && (
               <span
-                className="revisions__pending"
+                className="ml-1 text-[11px] italic text-faint"
                 data-testid={`revision-not-applied-${entry.forecast_revision}`}
               >
                 no order to compare

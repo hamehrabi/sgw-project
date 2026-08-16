@@ -46,7 +46,7 @@ That is the weakest separation `review-log.md` records, and it is stated in the 
 hidden (Q-026). TASK-005, TASK-006 and TASK-008 are cleaner: the run neither wrote nor fixed
 them, and their checks held.
 
-**Done is not the same as decided. Twenty-four change entries are open and none is accepted.**
+**Done is not the same as decided. Forty change entries are open and none is accepted** (CHG-016..CHG-039 from the build rounds, CHG-040..CHG-055 from the interface rebuild).
 Two of them contradict each other (CHG-034 and CHG-035), and one records a defect deliberately
 left unfixed — see *Known open defects* below.
 
@@ -73,9 +73,24 @@ touching a line of code. Where a rule decides an *order*, a *resolution* or a *g
 fixture has to be one in which the wrong answers are different answers.
 
 **The gate is one script now, and the test suite is one of its nine stages:** `bash ci/gate.sh`
-— `pytest` (**634, none skipped**) · `ruff` · `ci/fitness.py` (**7 of 7 wired**) · `ci/evals.py`
+— `pytest` (**708, none skipped**) · `ruff` · `ci/fitness.py` (**7 of 7 wired**) · `ci/evals.py`
 (the quality floor) · `ci/triggers.py` (stage 7 — after migrate, a real `UPDATE` refused) ·
-`tsc` · `lint` · `build` · `playwright` (36, real Chromium against both processes).
+`tsc` · `lint` · `build` · `playwright` (40, real Chromium against both processes).
+
+**The interface was rebuilt on 2026-08-16 against an eight-screen design** (`design/stitch/`,
+CHG-040..CHG-055): Tailwind v4 with the whole theme in `app/globals.css`, a hand-held shadcn
+component kit in `frontend/components/ui/`, and three surfaces behind a sidebar — Load,
+Storm Planning, Dispatch Board. Fifteen new decisions carry it, all `proposed`: the situation
+summary with its verifier-as-code (CHG-040, `backend/app/summary/`), the asset map (CHG-041 —
+Google Maps when `NEXT_PUBLIC_GOOGLE_MAPS_API_KEY` is set, an SVG scatter when not), flood
+zones A/AO/AH at the AE value and unrecognised zones scored minimal **with a reason**
+(CHG-042/043 — `WEIGHT_SET_VERSION` is `adr-007-v2` because the rule moved), real rank
+movement as a diff of two stored rankings (CHG-044), the `operator` role (CHG-045),
+`security_log` (CHG-046), stored findings (CHG-047), the match queue (CHG-048), crew staging
+(CHG-049), impact-ordered repair queue — impact, never risk (CHG-050), manifest design
+references (CHG-051), the `summary` module in FF-001's tuple (CHG-052), expiring temporary
+passwords (CHG-053), the feed that cannot say the system decided (CHG-054), and per-asset
+triage — Accept/Adjust/Dismiss writing decision records (CHG-055).
 
 **The script did not exist until 2026-08-16 and that was itself a finding.**
 `cicd-pipeline.md`'s *Local-only alternative* describes it in full and calls it the right shape
@@ -261,25 +276,34 @@ cd frontend && npm install
 bash ci/gate.sh                                          # ALL of the below, in order
 
 # or one stage at a time
-.venv/Scripts/python.exe -m pytest                       # 634 tests, none skipped
+.venv/Scripts/python.exe -m pytest                       # 708 tests, none skipped
 .venv/Scripts/python.exe -m ruff check backend spec/03-tests/05-executable ci
 .venv/Scripts/python.exe ci/fitness.py                   # FF-001..FF-007, all seven
 .venv/Scripts/python.exe ci/triggers.py                  # stage 7, after migrate
 cd frontend && npx tsc --noEmit && npm run lint && npm run build
 cd frontend && npm run e2e     # Playwright starts BOTH processes; no mocks
 
-# running it — two processes
+# running it — two processes. serve.py loads .env first, so ADR-006's named startup
+# failure fires for a value that is genuinely absent, not one a shell forgot to export.
+.venv/Scripts/python.exe ci/serve.py --port 8000
+# or without the .env loader:
 .venv/Scripts/python.exe -m uvicorn app.main:create_app --factory --port 8000
 cd frontend && npm run dev                               # proxies /api to :8000
 
 # accounts exist only here — no endpoint creates one, and none ever will
 .venv/Scripts/python.exe -m app.cli create-user --name "Ops Manager" \
-    --email ops@sgw.example --role admin
+    --email ops@sgw.example --role admin                 # roles: admin | operator (CHG-045)
+.venv/Scripts/python.exe -m app.cli set-temp-password --email ops@sgw.example
+                                                         # expires; must be replaced (CHG-053)
 ```
 
 `PYTHONPATH=backend` is needed for `uvicorn` and `app.cli`; `pytest.ini` sets it for tests.
 Configuration comes from the environment with **no defaults** — a missing value fails at
-startup, named (ADR-006).
+startup, named (ADR-006). Three arrived with the rebuild: `LLM_ENABLED` (exactly `true` or
+`false`; when true, `OPENAI_API_KEY`, `OPENAI_MODEL` and the three `LLM_*` guards are required
+with it), `TEMP_PASSWORD_EXPIRY_HOURS`, and `SAMPLE_SCENARIO_DIR` (what "Use sample storm
+data" loads, through the same parse path as a real upload). The frontend takes one optional
+value: `NEXT_PUBLIC_GOOGLE_MAPS_API_KEY` — absent, the asset map falls back to an SVG scatter.
 
 Running one test — files are named for their test ID, so the ID is the selector:
 

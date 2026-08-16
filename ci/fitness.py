@@ -320,7 +320,9 @@ FILESYSTEM_REACHES = (
     "createReadStream",
     "openSync(",
 )
-RENDER_PATH_DIRS = ("app", "views", "lib")
+# "components" joined with the interface rebuild, in the same commit that created the
+# directory: a render-path directory outside this tuple is a hole in the scan.
+RENDER_PATH_DIRS = ("app", "views", "lib", "components")
 
 
 class OpenProbe:

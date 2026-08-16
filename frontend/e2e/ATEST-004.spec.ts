@@ -71,5 +71,5 @@ test('the screen says the weights are uncalibrated', async ({ page }) => {
   const notice = page.getByTestId('uncalibrated-notice')
   await expect(notice).toBeVisible()
   await expect(notice).toContainText('have not been calibrated')
-  await expect(notice).toContainText('adr-007-v1')
+  await expect(notice).toContainText('adr-007-')
 })

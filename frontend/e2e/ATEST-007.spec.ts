@@ -46,6 +46,8 @@ async function loadedStorm(page: Page) {
     FILES.map((name) => path.join(FIXTURE, name)),
   )
   await expect(page.getByTestId('upload-success')).toBeVisible({ timeout: 30_000 })
+  // The board is the Dispatch Board surface — the sidebar's second of exactly two items.
+  await page.getByRole('button', { name: 'Dispatch Board' }).click()
   await expect(page.getByTestId('dispatch-board')).toBeVisible()
 }
 

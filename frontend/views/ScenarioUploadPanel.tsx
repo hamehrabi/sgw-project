@@ -13,11 +13,26 @@
  *
  * A refusal names the file and changes nothing: every already-loaded storm keeps working,
  * which is the promise FTEST-001 asserts on the other side of the boundary.
+ *
+ * "Use sample storm data" goes through the same parse path as a real upload — the button
+ * asks the server to read the bundled dataset, and everything after that is identical.
+ * It is not a shortcut, and the quality summary it produces is measured, never canned.
  */
 
+import { FileUp } from 'lucide-react'
 import { useState } from 'react'
 
-import { RequestFailed, scenarios } from '@/lib/api'
+import { Button } from '@/components/ui/button'
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+} from '@/components/ui/card'
+import { Input, Label } from '@/components/ui/field'
+import { insights, RequestFailed, scenarios } from '@/lib/api'
 import { isBlank, trimBlank } from '@/lib/blank'
 
 type State =
@@ -30,14 +45,9 @@ type State =
 const EXPECTED = 'manifest.json plus assets.csv, maintenance.csv, weather.csv and outages.csv'
 
 /**
- * What goes in `source_note` when the admin leaves the field blank.
- *
- * `data-and-integration-spec.md` §3 makes the note part of the request body and the server
- * requires it, so the panel has always sent this string — a stub, because until TASK-009
- * nothing stored the note or showed it. It is kept as the fallback rather than made mandatory:
- * making the field required would refuse a load during a storm over a sentence, and the note is
- * how a reader tells two prepared datasets apart, not how the system does (that is the content
- * digest, CHG-031).
+ * What goes in `source_note` when the admin leaves the field blank. Kept as a fallback
+ * rather than made mandatory: requiring the field would refuse a load during a storm
+ * over a sentence (CHG-031's surroundings).
  */
 const UNSTATED_SOURCE = 'uploaded via the panel'
 
@@ -45,7 +55,7 @@ export function ScenarioUploadPanel({
   role,
   onLoaded,
 }: {
-  role: 'admin' | 'user'
+  role: 'admin' | 'operator'
   onLoaded: (scenarioId: string) => void
 }) {
   const [state, setState] = useState<State>({ stage: 'idle' })
@@ -63,8 +73,6 @@ export function ScenarioUploadPanel({
     }
     setState({ stage: 'uploading' })
     try {
-      // The request returns once parsing has finished; the intermediate stage is shown
-      // because the parse is the slow half and the one that can fail.
       setState({ stage: 'parsing' })
       const created = await scenarios.load(
         trimBlank(name),
@@ -84,59 +92,120 @@ export function ScenarioUploadPanel({
     }
   }
 
+  async function sample() {
+    setState({ stage: 'parsing' })
+    try {
+      const created = await insights.loadSample()
+      setState({ stage: 'success', scenarioId: created.scenario_id })
+      onLoaded(created.scenario_id)
+    } catch (error) {
+      setState({
+        stage: 'error',
+        message:
+          error instanceof RequestFailed
+            ? error.message
+            : 'We could not reach the server. Nothing was changed.',
+      })
+    }
+  }
+
   return (
-    <section
-      className="upload"
-      onDragOver={(event) => event.preventDefault()}
-      onDrop={(event) => {
-        event.preventDefault()
-        void send(event.dataTransfer.files)
-      }}
-      data-testid="upload-panel"
-    >
-      <h2>Load a prepared storm</h2>
+    <Card data-testid="upload-panel">
+      <CardHeader>
+        <CardTitle>Load a prepared storm</CardTitle>
+        <CardDescription>
+          Review and load a prepared scenario. Nothing is sent to any live system.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="grid gap-4 sm:grid-cols-2">
+          <div>
+            <Label htmlFor="storm-name">Storm name</Label>
+            <Input
+              id="storm-name"
+              value={name}
+              onChange={(event) => setName(event.target.value)}
+              placeholder="Helene replay"
+            />
+          </div>
+          <div>
+            {/* §3: *which prepared dataset this is, and where it came from* — the field
+                the switcher shows beside each storm's name. */}
+            <Label htmlFor="storm-source-note">Where this came from</Label>
+            <Input
+              id="storm-source-note"
+              value={sourceNote}
+              onChange={(event) => setSourceNote(event.target.value)}
+              placeholder="NOAA 2024 replay pack"
+            />
+          </div>
+        </div>
 
-      <label htmlFor="storm-name">Storm name</label>
-      <input
-        id="storm-name"
-        value={name}
-        onChange={(event) => setName(event.target.value)}
-        placeholder="Helene replay"
-      />
+        <div
+          className="rounded-card border-2 border-dashed border-line-strong bg-rail px-6 py-10 text-center"
+          onDragOver={(event) => event.preventDefault()}
+          onDrop={(event) => {
+            event.preventDefault()
+            void send(event.dataTransfer.files)
+          }}
+        >
+          <div className="mx-auto mb-3 flex h-11 w-11 items-center justify-center rounded-full bg-teal-soft">
+            <FileUp className="h-5 w-5 text-teal-deep" aria-hidden />
+          </div>
+          <p className="text-[15px] font-medium">
+            Drop your asset, maintenance, weather and outage files here
+          </p>
+          <p className="mt-1 text-[13px] text-muted">
+            {EXPECTED}. Nothing is sent to any live system.
+          </p>
+          <div className="mt-4">
+            <Label htmlFor="storm-files" className="sr-only">
+              Files — {EXPECTED}
+            </Label>
+            <input
+              id="storm-files"
+              type="file"
+              multiple
+              className="mx-auto block max-w-xs text-[13px] text-muted file:mr-3 file:rounded-card file:border file:border-line file:bg-background file:px-3 file:py-1.5 file:text-[13px] file:font-medium file:text-ink hover:file:bg-panel"
+              onChange={(event) => event.target.files && void send(event.target.files)}
+            />
+          </div>
+        </div>
 
-      {/* `database-design.md` §3: *which prepared dataset this is, and where it came from.* It
-          is the field `ScenarioSwitcher` shows beside each storm's name, and it is how a person
-          tells two loaded storms apart when both are called something plausible. */}
-      <label htmlFor="storm-source-note">Where this came from</label>
-      <input
-        id="storm-source-note"
-        value={sourceNote}
-        onChange={(event) => setSourceNote(event.target.value)}
-        placeholder="NOAA 2024 replay pack"
-      />
-
-      <label htmlFor="storm-files">Files — {EXPECTED}</label>
-      <input
-        id="storm-files"
-        type="file"
-        multiple
-        onChange={(event) => event.target.files && void send(event.target.files)}
-      />
-
-      <p className="upload__hint">Or drag the folder&rsquo;s files onto this panel.</p>
-
-      {state.stage === 'uploading' && <p role="status">Uploading…</p>}
-      {state.stage === 'parsing' && <p role="status">Parsing and joining the records…</p>}
-      {state.stage === 'success' && (
-        <p role="status" data-testid="upload-success">
-          Loaded. This storm is now selectable alongside any others.
+        {state.stage === 'uploading' && (
+          <p role="status" className="text-[13px] text-muted">
+            Uploading…
+          </p>
+        )}
+        {state.stage === 'parsing' && (
+          <p role="status" className="text-[13px] text-muted">
+            Parsing and joining the records…
+          </p>
+        )}
+        {state.stage === 'success' && (
+          <p
+            role="status"
+            data-testid="upload-success"
+            className="text-[13px] font-medium text-low-fg"
+          >
+            Loaded. This storm is now selectable alongside any others.
+          </p>
+        )}
+        {state.stage === 'error' && (
+          <p role="alert" data-testid="upload-error" className="text-[13px] text-high-fg">
+            {state.message}
+          </p>
+        )}
+      </CardContent>
+      <CardFooter className="justify-between">
+        <Button variant="link" onClick={() => void sample()}>
+          Use sample storm data
+        </Button>
+        <p className="text-[12px] text-muted">
+          Loading goes through the same checks as any upload — size, content, and all
+          seven data-defect rules.
         </p>
-      )}
-      {state.stage === 'error' && (
-        <p role="alert" data-testid="upload-error">
-          {state.message}
-        </p>
-      )}
-    </section>
+      </CardFooter>
+    </Card>
   )
 }

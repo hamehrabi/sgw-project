@@ -24,33 +24,33 @@ import { Asset, AssetPage, AssetValue } from '@/lib/api'
 function Value({ value }: { value: AssetValue }) {
   if (value.value === null || value.value === '') {
     // Not "0", not blank. A missing measurement must not read as a good one.
-    return <span className="value value--absent">not recorded</span>
+    return <span className="text-faint">not recorded</span>
   }
   return (
-    <span className={value.estimated ? 'value value--estimated' : 'value'}>
+    <span className={value.estimated ? 'italic text-ink-secondary' : undefined}>
       {value.value}
-      {value.estimated && <span className="value__tag"> (estimated)</span>}
-      {value.observed_at && <span className="value__age"> · {value.observed_at}</span>}
-      {value.source && <span className="value__source"> · {value.source}</span>}
+      {value.estimated && <span className="text-[11px] text-muted"> (estimated)</span>}
+      {value.observed_at && <span className="text-[11px] text-muted"> · {value.observed_at}</span>}
+      {value.source && <span className="text-[11px] text-muted"> · {value.source}</span>}
     </span>
   )
 }
 
 function Row({ asset }: { asset: Asset }) {
   return (
-    <tr className={asset.match_status === 'needs_review' ? 'row--review' : undefined}>
-      <td>
+    <tr className={asset.match_status === 'needs_review' ? 'border-b border-line bg-teal-soft/40' : 'border-b border-line'}>
+      <td className="px-3 py-2">
         {asset.name || '—'}
-        <div className="row__codes">{asset.external_ids.join(' · ')}</div>
+        <div className="text-[11px] text-faint">{asset.external_ids.join(' · ')}</div>
         {asset.match_status === 'needs_review' && (
-          <span className="badge" data-testid="needs-review">
+          <span className="mt-0.5 inline-flex rounded-full border border-line bg-background px-2 py-0.5 text-[11px] text-muted" data-testid="needs-review">
             needs review
           </span>
         )}
       </td>
-      <td>{asset.type}</td>
+      <td className="px-3 py-2">{asset.type}</td>
       {asset.values.map((value) => (
-        <td key={value.name}>
+        <td key={value.name} className="px-3 py-2">
           <Value value={value} />
         </td>
       ))}
@@ -99,18 +99,18 @@ export function AssetTable({
   return (
     <>
       {page.needs_review_count > 0 && (
-        <p className="review-count" data-testid="needs-review-count">
+        <p className="rounded-card border border-line bg-rail px-3 py-2 text-[13px]" data-testid="needs-review-count">
           {page.needs_review_count} record(s) could not be matched to a single asset and need
           a person to resolve them. They are listed first, and were never merged on a guess.
         </p>
       )}
-      <table className="assets" data-testid="asset-table">
-        <thead>
+      <div className="overflow-x-auto rounded-card border border-line"><table className="w-full text-[13px]" data-testid="asset-table">
+        <thead className="bg-rail">
           <tr>
-            <th>Asset</th>
-            <th>Type</th>
+            <th className="px-3 py-2 text-left text-[12px] font-medium uppercase tracking-wide text-muted">Asset</th>
+            <th className="px-3 py-2 text-left text-[12px] font-medium uppercase tracking-wide text-muted">Type</th>
             {columns.map((name) => (
-              <th key={name}>{name.replace(/_/g, ' ')}</th>
+              <th key={name} className="px-3 py-2 text-left text-[12px] font-medium uppercase tracking-wide text-muted capitalize">{name.replace(/_/g, ' ')}</th>
             ))}
           </tr>
         </thead>
@@ -119,7 +119,7 @@ export function AssetTable({
             <Row key={asset.asset_id} asset={asset} />
           ))}
         </tbody>
-      </table>
+      </table></div>
     </>
   )
 }

@@ -1,29 +1,35 @@
 'use client'
 
 /**
- * AppShell — the frame: navigation, scenario selector, current user and role.
+ * AppShell — the frame: sidebar, top bar, current user and role.
  *
- * Specified in `frontend-component-spec.md`. Three states: loading, ready, unauthorized.
+ * Specified in `frontend-component-spec.md`, reshaped to the eight-screen design: a left
+ * sidebar carrying the scenario context and exactly two navigation items — Storm
+ * Planning and Dispatch Board — and a top bar stating the platform's posture in one
+ * line: how many prepared files stand behind the screen, that no live system is
+ * connected, and when the forecast was issued. No bell, no gear, no avatar.
  *
- * **Render no content until the signed-in role is known.** That rule is why this component
- * resolves the session before it renders anything below the frame — a shell that painted
- * its navigation first would show an admin's controls for the moment before the role
+ * **Render no content until the signed-in role is known.** The shell resolves the
+ * session before painting anything below the frame — a shell that painted its
+ * navigation first would show an admin's controls for the moment before the role
  * arrived, and hiding them afterwards is not the same as never having offered them.
  *
- * **The chosen storm is held here, beside the identity, and for the same reason.** The spec
- * puts the selector in this frame *"because everything below it is scoped to one scenario"* —
- * so the scope has to live where the frame does, or two components own one fact and are free
- * to disagree about which storm the screen is showing. That disagreement is REQ-F-010's blend
- * with no visible symptom.
+ * **The chosen storm is held here, beside the identity, and for the same reason.** The
+ * spec puts the selector in this frame *"because everything below it is scoped to one
+ * scenario"* — so the scope lives where the frame does, or two components own one fact
+ * and are free to disagree about which storm the screen is showing (REQ-F-010).
  *
- * Hiding a control here is never the enforcement. The server refuses the request as well
- * (`technical-spec.md` §3), and a deny test covers each refusal.
+ * Hiding a control here is never the enforcement. The server refuses the request as
+ * well (`technical-spec.md` §3), and a deny test covers each refusal.
  */
 
+import { LayoutGrid, Tornado, Upload } from 'lucide-react'
 import { useCallback, useEffect, useState } from 'react'
 
+import { cn } from '@/lib/utils'
 import { auth, Identity, LoadedScenario, RequestFailed, scenarios } from '@/lib/api'
 
+import { PasswordChangeForm } from './PasswordChangeForm'
 import { ScenarioSwitcher, SwitcherState } from './ScenarioSwitcher'
 import { SignInForm } from './SignInForm'
 
@@ -32,29 +38,41 @@ type State =
   | { status: 'ready'; identity: Identity }
   | { status: 'unauthorized' }
 
-/** Which storm is on screen, and how anything below the shell changes it. */
+/** The three surfaces below the frame. Load is a surface, not a nav item — the design
+ *  carries exactly two nav items, and loading is how a storm ARRIVES, not a place work
+ *  happens. */
+export type Surface = 'load' | 'planning' | 'dispatch'
+
 export interface StormChoice {
   scenarioId: string | null
-  /** Every storm loaded, newest first — so a screen can tell "none chosen" from "none exist". */
   storms: LoadedScenario[]
-  /** Select a storm, and re-read the list: a storm just loaded has to appear in it. */
   onLoaded: (scenarioId: string) => void
 }
 
-/**
- * `children` is a function of the identity rather than a node, so nothing below the shell
- * can render before the role is known — the rule is enforced by the type, not by remembering.
- * The chosen storm travels the same way, for the same reason.
- */
+export interface ShellControls {
+  surface: Surface
+  setSurface: (surface: Surface) => void
+  /** True for one render pass after a storm loads — Planning shows the confirmation. */
+  justLoaded: boolean
+}
+
+function clock(issuedAt: string | null | undefined): string | null {
+  if (!issuedAt) return null
+  const at = new Date(issuedAt)
+  return Number.isNaN(at.getTime()) ? null : at.toISOString().slice(11, 16)
+}
+
 export function AppShell({
   children,
 }: {
-  children?: (identity: Identity, storm: StormChoice) => React.ReactNode
+  children?: (identity: Identity, storm: StormChoice, shell: ShellControls) => React.ReactNode
 }) {
   const [state, setState] = useState<State>({ status: 'loading' })
   const [storms, setStorms] = useState<LoadedScenario[]>([])
   const [switcher, setSwitcher] = useState<SwitcherState>('loading')
   const [selected, setSelected] = useState<string | null>(null)
+  const [surface, setSurface] = useState<Surface>('load')
+  const [justLoaded, setJustLoaded] = useState(false)
 
   const resolveSession = useCallback(async () => {
     try {
@@ -64,8 +82,6 @@ export function AppShell({
         setState({ status: 'unauthorized' })
         return
       }
-      // Anything else is a server or network problem rather than a signed-out user.
-      // Treating it as signed out would be a sign-in screen during an outage.
       setState({ status: 'unauthorized' })
     }
   }, [])
@@ -76,9 +92,8 @@ export function AppShell({
       setStorms((await scenarios.list()).items)
       setSwitcher('ready')
     } catch {
-      // The list is unknown, which is **not** the same fact as "no storm is loaded". The
-      // switcher keeps the two apart in words, and the last known list is left alone rather
-      // than emptied — a read that failed has not unloaded anything.
+      // The list is unknown — NOT the same fact as "no storm is loaded". The last known
+      // list is left alone: a read that failed has not unloaded anything.
       setSwitcher('error')
     }
   }, [])
@@ -94,65 +109,180 @@ export function AppShell({
   const onLoaded = useCallback(
     (scenarioId: string) => {
       setSelected(scenarioId)
+      setJustLoaded(true)
+      // A storm just arrived; the person who loaded it came to rank it.
+      setSurface('planning')
       void readStorms()
     },
     [readStorms],
   )
 
+  const choose = useCallback((scenarioId: string) => {
+    setSelected(scenarioId)
+    setJustLoaded(false)
+    setSurface((current) => (current === 'load' ? 'planning' : current))
+  }, [])
+
   if (state.status === 'loading') {
-    // Progress, never a blank frame (`frontend-component-spec.md`, loading state).
     return (
-      <main className="shell shell--centred">
-        <p role="status">Loading…</p>
+      <main className="flex min-h-screen items-center justify-center">
+        <p role="status" className="text-muted">
+          Loading…
+        </p>
       </main>
     )
   }
 
   if (state.status === 'unauthorized') {
     return (
-      <main className="shell shell--centred">
-        <h1>SGW Resilience Platform</h1>
-        <SignInForm onSignedIn={(identity) => setState({ status: 'ready', identity })} />
+      <main className="flex min-h-screen items-center justify-center bg-rail p-6">
+        <div className="w-full max-w-sm">
+          <h1 className="mb-6 text-center text-[22px] font-semibold tracking-tight">
+            SGW Resilience Platform
+          </h1>
+          <SignInForm onSignedIn={(identity) => setState({ status: 'ready', identity })} />
+        </div>
       </main>
     )
   }
 
   const { identity } = state
 
-  return (
-    <div className="shell">
-      <header className="shell__bar">
-        <span className="shell__title">SGW Resilience Platform</span>
-
-        {/* Always present: everything below it is scoped to one scenario. */}
-        <ScenarioSwitcher
-          storms={storms}
-          state={switcher}
-          selected={selected}
-          role={identity.role}
-          onSelect={setSelected}
-          onRetry={() => void readStorms()}
-        />
-
-        <span className="shell__identity">
-          {identity.name} · <span data-testid="role">{identity.role}</span>
-        </span>
-
-        <button
-          type="button"
-          onClick={async () => {
-            await auth.signOut()
-            setSelected(null)
-            setState({ status: 'unauthorized' })
-          }}
-        >
-          Sign out
-        </button>
-      </header>
-
-      <main className="shell__content">
-        {children?.(identity, { scenarioId: selected, storms, onLoaded })}
+  // CHG-053: a temporary password buys the change screen and nothing else. The server
+  // refuses every other route regardless — this is the door, not the lock.
+  if (identity.must_change_password) {
+    return (
+      <main className="flex min-h-screen items-center justify-center bg-rail p-6">
+        <div className="w-full max-w-sm">
+          <h1 className="mb-6 text-center text-[22px] font-semibold tracking-tight">
+            SGW Resilience Platform
+          </h1>
+          <PasswordChangeForm
+            onChanged={() =>
+              setState({
+                status: 'ready',
+                identity: { ...identity, must_change_password: false },
+              })
+            }
+          />
+        </div>
       </main>
+    )
+  }
+
+  const current = storms.find((storm) => storm.scenario_id === selected)
+  const forecastAt = clock(current?.forecast_issued_at)
+
+  const navigation: { surface: Surface; label: string; icon: typeof Tornado }[] = [
+    { surface: 'planning', label: 'Storm Planning', icon: Tornado },
+    { surface: 'dispatch', label: 'Dispatch Board', icon: LayoutGrid },
+  ]
+
+  return (
+    <div className="flex min-h-screen">
+      {/* ---- Sidebar: scenario context and exactly two navigation items ---- */}
+      <aside className="flex w-64 shrink-0 flex-col border-r border-line bg-rail">
+        <div className="border-b border-line p-4">
+          {current ? (
+            <>
+              <p className="text-[17px] font-semibold leading-snug">
+                Scenario: {current.name}
+              </p>
+              <p className="mt-0.5 text-[12px] text-muted">{current.source_note}</p>
+            </>
+          ) : (
+            <p className="text-[15px] font-semibold text-muted">No scenario chosen</p>
+          )}
+          <div className="mt-3">
+            <ScenarioSwitcher
+              storms={storms}
+              state={switcher}
+              selected={selected}
+              role={identity.role}
+              onSelect={choose}
+              onRetry={() => void readStorms()}
+            />
+          </div>
+        </div>
+
+        <nav className="flex flex-col gap-1 p-3">
+          {navigation.map(({ surface: item, label, icon: Icon }) => (
+            <button
+              key={item}
+              type="button"
+              onClick={() => setSurface(item)}
+              aria-current={surface === item || undefined}
+              className={cn(
+                'flex items-center gap-2.5 rounded-card border-l-2 border-transparent px-3 py-2',
+                'text-left text-[14px] font-medium text-ink-secondary hover:bg-panel',
+                surface === item && 'border-teal bg-teal-soft text-teal-deep',
+              )}
+            >
+              <Icon className="h-4 w-4" aria-hidden />
+              {label}
+            </button>
+          ))}
+
+          {identity.role === 'admin' && (
+            <button
+              type="button"
+              onClick={() => {
+                setJustLoaded(false)
+                setSurface('load')
+              }}
+              aria-current={surface === 'load' || undefined}
+              className={cn(
+                'mt-2 flex items-center gap-2.5 rounded-card border-t border-line px-3 pt-3 pb-2',
+                'text-left text-[13px] text-muted hover:text-ink',
+                surface === 'load' && 'text-teal-deep',
+              )}
+            >
+              <Upload className="h-3.5 w-3.5" aria-hidden />
+              Load storm data
+            </button>
+          )}
+        </nav>
+      </aside>
+
+      {/* ---- Top bar and content ---- */}
+      <div className="flex min-w-0 flex-1 flex-col">
+        <header className="flex h-14 shrink-0 items-center justify-between border-b border-line bg-background px-5">
+          <span className="text-[15px] font-semibold tracking-tight">
+            SGW Resilience Platform
+          </span>
+          <div className="flex items-center gap-5 text-[13px]">
+            <span className="text-muted">
+              {/* The posture line: what stands behind this screen, and what does not. */}
+              {current ? '5 files loaded' : 'no storm loaded'} · no live system connections
+            </span>
+            {forecastAt && (
+              <span className="font-medium">Forecast issued {forecastAt}</span>
+            )}
+            <span className="text-muted">
+              {identity.name} · <span data-testid="role">{identity.role}</span>
+            </span>
+            <button
+              type="button"
+              className="text-muted underline-offset-4 hover:text-ink hover:underline"
+              onClick={async () => {
+                await auth.signOut()
+                setSelected(null)
+                setState({ status: 'unauthorized' })
+              }}
+            >
+              Sign out
+            </button>
+          </div>
+        </header>
+
+        <main className="min-w-0 flex-1 overflow-x-hidden p-6">
+          {children?.(
+            identity,
+            { scenarioId: selected, storms, onLoaded },
+            { surface, setSurface, justLoaded },
+          )}
+        </main>
+      </div>
     </div>
   )
 }

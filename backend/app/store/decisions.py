@@ -119,6 +119,49 @@ def append_recommendation(connection, *, scenario_id, forecast_revision, payload
     )
 
 
+ASSET_RANKING = "asset_ranking"
+
+# The design's words → the schema's frozen kind alphabet (CHG-055). The mapping lives
+# here and nowhere else, so "Adjust" cannot come to mean two different stored kinds.
+TRIAGE_ACTIONS = {"Accept": "accept", "Adjust": "change", "Dismiss": "reject"}
+
+
+def append_triage(
+    connection,
+    *,
+    scenario_id,
+    forecast_revision,
+    risk_score_id,
+    asset_code,
+    action,
+    note,
+    actor_user_id,
+) -> str:
+    """One person's decision about one asset's rank (CHG-055).
+
+    The subject is the stored `risk_scores` row, so the decision names exactly the rank —
+    at exactly the revision — the person was reading (BR-001: a decision is taken while
+    looking at a list). **Appended without a one-per-subject rule, deliberately**: a
+    person may triage the same asset again as the storm moves, and the history of those
+    passes is the point of recording them. Nothing is dispatched, hidden or re-scored —
+    a Dismiss records disagreement with a rank; it does not remove the asset.
+    """
+    return _append(
+        connection,
+        scenario_id=scenario_id,
+        kind=TRIAGE_ACTIONS[action],
+        subject_type=ASSET_RANKING,
+        subject_id=risk_score_id,
+        payload={
+            "action": action,
+            "asset_code": asset_code,
+            "forecast_revision": forecast_revision,
+            "note": note,
+        },
+        actor_user_id=actor_user_id,
+    )
+
+
 def crew_label(value: str) -> str | None:
     """The crew label as the store will hold it, or `None` if the store would refuse it.
 

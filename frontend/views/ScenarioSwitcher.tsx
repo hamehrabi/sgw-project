@@ -7,34 +7,27 @@
  * loaded date. States: loading, success, empty, error. The empty state reads 'no storm loaded
  * yet' and points an admin at the upload panel. It must never render as a scenario with no
  * risk."* `AppShell` keeps it present always, "because everything below it is scoped to one
- * scenario".
- *
- * Until TASK-009 only the empty state existed, and it was the only one reachable: nothing
- * listed the loaded storms. The endpoint that does is CHG-030, and it is why the other three
- * arrive now rather than earlier.
+ * scenario" — it lives in the sidebar's scenario block now, which is the same frame.
  *
  * **Three rules this component is written around.**
  *
  * *Empty and error are different facts and never share words.* *No storm is loaded* means an
  * admin should go and load one. *We could not find out which storms are loaded* means nothing
  * of the kind, and borrowing the first sentence for the second would send somebody to load a
- * storm that is already there — during a storm, on the screen that is supposed to say what is
- * happening.
+ * storm that is already there.
  *
  * *Nothing is chosen for the reader.* A storm is selected when somebody selects it, or when
- * they have just loaded one. The alternative — quietly selecting the newest — was declined:
- * every panel below is scoped to whatever is selected, so an automatic choice puts a ranking
- * on screen that nobody asked for, and this product's whole posture is that it recommends and
- * people decide. It also has a concrete cost: a failed upload would leave the previous storm's
- * ranking on screen underneath the refusal.
+ * they have just loaded one. An automatic choice puts a ranking on screen that nobody asked
+ * for — this product recommends; people decide.
  *
  * *It shows what is there, and says what is not.* A storm whose current revision has no
- * ranking behind it is labelled as such, because the switcher must never render as a scenario
- * with no risk (CHG-027's argument, one component over).
+ * ranking behind it is labelled as such (CHG-027's argument, one component over).
  */
 
+import { ChevronsUpDown } from 'lucide-react'
 import { useState } from 'react'
 
+import { cn } from '@/lib/utils'
 import { LoadedScenario } from '@/lib/api'
 
 export type SwitcherState = 'loading' | 'ready' | 'error'
@@ -57,14 +50,17 @@ function Option({
     <li>
       <button
         type="button"
-        className={selected ? 'switcher__option switcher__option--on' : 'switcher__option'}
+        className={cn(
+          'w-full rounded-card border border-transparent px-2.5 py-2 text-left hover:bg-panel',
+          selected && 'border-teal bg-teal-soft',
+        )}
         aria-current={selected || undefined}
         data-testid="scenario-option"
         onClick={() => onSelect(storm.scenario_id)}
       >
-        <span className="switcher__name">{storm.name}</span>
-        <span className="switcher__note">{storm.source_note}</span>
-        <span className="switcher__meta">
+        <span className="block text-[13px] font-medium leading-5">{storm.name}</span>
+        <span className="block text-[12px] text-muted">{storm.source_note}</span>
+        <span className="block text-[11px] leading-4 text-faint">
           loaded {ago(storm.loaded_at)} · {storm.asset_count} asset(s) ·{' '}
           {/* Never silently: a storm nobody has ranked is not a quiet one. */}
           {storm.ranked ? `ranked at revision ${storm.forecast_revision}` : 'not ranked yet'}
@@ -88,20 +84,18 @@ export function ScenarioSwitcher({
   storms: LoadedScenario[]
   state: SwitcherState
   selected: string | null
-  role: 'admin' | 'user'
+  role: 'admin' | 'operator'
   onSelect: (id: string) => void
   onRetry: () => void
 }) {
-  // The list is controlled rather than left to the browser so that choosing a storm closes it.
-  // A disclosure that stays open over the storm it just switched to is a panel covering the
-  // thing the reader opened it to see.
+  // Controlled so that choosing a storm closes the list — a disclosure left open over
+  // the storm it just switched to is a panel covering the thing the reader opened it
+  // to see.
   const [open, setOpen] = useState(false)
 
   if (state === 'loading') {
-    // Progress, never a blank frame — and never the empty state's words, which would read as
-    // "no storm is loaded" for as long as the read takes.
     return (
-      <span className="switcher" data-testid="scenario-switcher">
+      <span className="block text-[12px] text-muted" data-testid="scenario-switcher">
         <span role="status">Reading the loaded storms…</span>
       </span>
     )
@@ -109,9 +103,15 @@ export function ScenarioSwitcher({
 
   if (state === 'error') {
     return (
-      <span className="switcher switcher--error" data-testid="scenario-switcher">
-        <span role="alert">We could not read which storms are loaded.</span>{' '}
-        <button type="button" onClick={onRetry}>
+      <span className="block text-[12px]" data-testid="scenario-switcher">
+        <span role="alert" className="text-high-fg">
+          We could not read which storms are loaded.
+        </span>{' '}
+        <button
+          type="button"
+          onClick={onRetry}
+          className="font-medium text-teal underline-offset-2 hover:underline"
+        >
           Retry
         </button>
       </span>
@@ -120,7 +120,7 @@ export function ScenarioSwitcher({
 
   if (storms.length === 0) {
     return (
-      <span className="switcher" data-testid="scenario-switcher">
+      <span className="block text-[12px] text-muted" data-testid="scenario-switcher">
         <span role="status" data-testid="scenario-switcher-empty">
           No storm loaded yet.
           {/* Pointed at the panel only if they can use it: telling a dispatcher to load a
@@ -135,18 +135,28 @@ export function ScenarioSwitcher({
 
   return (
     <details
-      className="switcher"
+      className="group"
       data-testid="scenario-switcher"
       open={open}
       onToggle={(event) => setOpen(event.currentTarget.open)}
     >
-      <summary data-testid="scenario-switcher-toggle">
-        <span className="switcher__label">Storms</span>{' '}
-        <span className="switcher__current" data-testid="scenario-current">
-          {current ? current.name : `${storms.length} loaded · none chosen`}
+      <summary
+        data-testid="scenario-switcher-toggle"
+        className={cn(
+          'flex cursor-pointer list-none items-center justify-between gap-2 rounded-card',
+          'border border-line bg-background px-2.5 py-1.5 text-[12px] hover:bg-panel',
+          '[&::-webkit-details-marker]:hidden',
+        )}
+      >
+        <span>
+          <span className="mr-1.5 font-medium text-muted">Storms</span>
+          <span data-testid="scenario-current">
+            {current ? current.name : `${storms.length} loaded · none chosen`}
+          </span>
         </span>
+        <ChevronsUpDown className="h-3.5 w-3.5 shrink-0 text-faint" aria-hidden />
       </summary>
-      <ul className="switcher__list">
+      <ul className="mt-1.5 space-y-0.5 rounded-card border border-line bg-background p-1">
         {storms.map((storm) => (
           <Option
             key={storm.scenario_id}

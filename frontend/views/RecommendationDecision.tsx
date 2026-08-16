@@ -66,7 +66,7 @@ export function RecommendationDecision({ recommendationId }: { recommendationId:
 
   if (state.stage === 'decided') {
     return (
-      <div className="decision decision--done" role="status" data-testid="decision-recorded">
+      <div className="rounded-card border border-low-fg/25 bg-low-bg p-4 text-[13px] leading-relaxed text-low-fg" role="status" data-testid="decision-recorded">
         <strong>Recorded: {state.kind}.</strong> This was written to the decision record at{' '}
         {state.at} and cannot be edited — a correction is a new entry.{' '}
         <em>No crew has been moved and nothing has been dispatched.</em>
@@ -76,18 +76,18 @@ export function RecommendationDecision({ recommendationId }: { recommendationId:
 
   if (state.stage === 'already') {
     return (
-      <div className="decision decision--done" role="status" data-testid="decision-already">
+      <div className="rounded-card border border-line bg-rail p-4 text-[13px] leading-relaxed" role="status" data-testid="decision-already">
         {state.message}
       </div>
     )
   }
 
   return (
-    <form className="decision" onSubmit={submit} data-testid="decision-form">
-      <fieldset>
-        <legend>Your decision on this ranking</legend>
+    <form className="space-y-3 rounded-card border border-line p-4" onSubmit={submit} data-testid="decision-form">
+      <fieldset className="flex flex-wrap items-center gap-4">
+        <legend className="mb-1.5 w-full text-[14px] font-semibold">Your decision on this ranking</legend>
         {(['accept', 'change', 'reject'] as Kind[]).map((option) => (
-          <label key={option} className="decision__option">
+          <label key={option} className="flex items-center gap-1.5 text-[13px] capitalize">
             <input
               type="radio"
               name="decision"
@@ -100,10 +100,12 @@ export function RecommendationDecision({ recommendationId }: { recommendationId:
         ))}
       </fieldset>
 
-      <label htmlFor="decision-note">
+      <label htmlFor="decision-note" className="block text-[13px] font-medium text-ink-secondary">
         Note {noteRequired ? '(required)' : '(optional)'}
       </label>
       <textarea
+        className="w-full rounded-card border border-line p-3 text-[14px]"
+        rows={3}
         id="decision-note"
         maxLength={2000}
         value={note}
@@ -112,15 +114,15 @@ export function RecommendationDecision({ recommendationId }: { recommendationId:
       />
 
       {state.stage === 'error' && (
-        <p role="alert" data-testid="decision-error">
+        <p role="alert" data-testid="decision-error" className="text-[13px] text-high-fg">
           {state.message}
         </p>
       )}
 
-      <button type="submit" disabled={state.stage === 'saving'}>
+      <button type="submit" disabled={state.stage === 'saving'} className="inline-flex h-9 items-center rounded-card bg-ink px-4 text-[14px] font-medium text-white hover:bg-ink-secondary disabled:opacity-50">
         {state.stage === 'saving' ? 'Recording…' : 'Record decision'}
       </button>
-      <p className="decision__note">
+      <p className="text-[12px] leading-relaxed text-muted">
         Recording a decision changes nothing in the field. It is written down so the storm can
         be explained afterwards.
       </p>

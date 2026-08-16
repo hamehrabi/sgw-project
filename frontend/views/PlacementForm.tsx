@@ -111,9 +111,9 @@ export function PlacementForm({
   }
 
   return (
-    <section className="placement">
+    <section className="space-y-3">
       {recorded.length > 0 && (
-        <div className="placement__done" role="status" data-testid="placement-recorded">
+        <div className="space-y-2 rounded-card border border-low-fg/25 bg-low-bg p-4 text-[13px] leading-relaxed text-low-fg" role="status" data-testid="placement-recorded">
           {recorded.map((placement) => (
             <p key={placement.placement_id}>
               <strong>Recorded: {placement.crew}</strong> at{' '}
@@ -127,15 +127,16 @@ export function PlacementForm({
         </div>
       )}
 
-      <form onSubmit={submit} data-testid="placement-form">
-        <h3>Record a crew placement</h3>
-        <p className="placement__against">
+      <form onSubmit={submit} data-testid="placement-form" className="space-y-3 rounded-card border border-line p-4">
+        <h3 className="text-[14px] font-semibold">Record a crew placement</h3>
+        <p className="text-[13px] text-muted">
           Against the ranking you are reading — <strong>forecast revision{' '}
           {ranking.forecast_revision}</strong>.
         </p>
 
-        <label htmlFor="placement-crew">Crew</label>
+        <label htmlFor="placement-crew" className="block text-[13px] font-medium text-ink-secondary">Crew</label>
         <input
+          className="h-9 w-full max-w-sm rounded-card border border-line px-3 text-[14px]"
           id="placement-crew"
           data-testid="placement-crew"
           maxLength={CREW_MAX}
@@ -144,12 +145,12 @@ export function PlacementForm({
           placeholder="North team"
         />
 
-        <fieldset className="placement__assets">
+        <fieldset className="max-h-72 space-y-1 overflow-y-auto rounded-card border border-line p-3">
           {/* Deliberately not "which assets is this crew waiting at" — an accessible name
               containing the word would collide with the field labelled Crew above. */}
-          <legend>Which assets is this placement for?</legend>
+          <legend className="mb-1 text-[13px] font-medium text-ink-secondary">Which assets is this placement for?</legend>
           {ranking.items.map((item) => (
-            <label key={item.asset_id} className="placement__asset">
+            <label key={item.asset_id} className="flex items-center gap-2 py-0.5 text-[13px]">
               <input
                 type="checkbox"
                 data-testid={`placement-asset-${item.external_ids[0]}`}
@@ -157,16 +158,18 @@ export function PlacementForm({
                 onChange={() => toggle(item.asset_id)}
               />{' '}
               {item.rank ?? '—'} · {item.name || item.external_ids[0]}{' '}
-              <span className="row__codes">{item.external_ids.join(' · ')}</span>
+              <span className="text-[11px] text-faint">{item.external_ids.join(' · ')}</span>
               {/* An asset that could not be scored is on this list too. It is in the ranking and
                   not ranked, and planning around it is the reason it was kept (FTEST-004). */}
-              {item.score === null && <span className="band band--unscored">Not scored</span>}
+              {item.score === null && <span className="ml-1 rounded-full bg-panel px-2 py-0.5 text-[11px] font-medium text-ink-secondary">Not scored</span>}
             </label>
           ))}
         </fieldset>
 
-        <label htmlFor="placement-note">Why here? (optional)</label>
+        <label htmlFor="placement-note" className="block text-[13px] font-medium text-ink-secondary">Why here? (optional)</label>
         <textarea
+          className="w-full rounded-card border border-line p-3 text-[14px]"
+          rows={2}
           id="placement-note"
           data-testid="placement-note"
           maxLength={2000}
@@ -175,15 +178,15 @@ export function PlacementForm({
         />
 
         {state.stage === 'error' && (
-          <p role="alert" data-testid="placement-error">
+          <p role="alert" data-testid="placement-error" className="text-[13px] text-high-fg">
             {state.message}
           </p>
         )}
 
-        <button type="submit" data-testid="placement-submit" disabled={state.stage === 'saving'}>
+        <button type="submit" data-testid="placement-submit" disabled={state.stage === 'saving'} className="inline-flex h-9 items-center rounded-card border border-line bg-background px-4 text-[14px] font-medium hover:bg-panel disabled:opacity-50">
           {state.stage === 'saving' ? 'Recording…' : 'Record placement'}
         </button>
-        <p className="placement__note">
+        <p className="text-[12px] leading-relaxed text-muted">
           Recording a placement changes nothing in the field. No crew is moved and no message
           leaves this platform — it is written down so the decision sits beside the evidence for
           it.
