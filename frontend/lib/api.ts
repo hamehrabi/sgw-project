@@ -345,10 +345,11 @@ export interface Dismissal {
   occurred_at: string
 }
 
-/** The longest reason the server will store. Mirrored from `dispatch.DISMISSAL_REASON_MAX`,
- *  and used only to stop the field growing past what a `400` would refuse — the rule is the
- *  server's, and this field being generous is never what makes a dismissal legal. */
-export const DISMISSAL_REASON_MAX = 2000
+/** The bound and the blank alphabet a dismissal reason is judged by, re-exported from the one
+ *  module that holds them so this file has no second copy of either (CHG-037). The rule is the
+ *  server's; these exist only so the field cannot grow past what a `400` would refuse and the
+ *  button is not offered for a reason that is not one. */
+export { DISMISSAL_REASON_MAX, trimDismissalReason } from './dismissal'
 
 export const dispatch = {
   board: (id: string) => request<Board>(`/api/v1/scenarios/${id}/jobs`),

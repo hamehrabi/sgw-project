@@ -8,8 +8,9 @@
 **Task ID:** TASK-008
 **Task title:** Dismiss a false alarm in one action
 **Priority:** P1
-**Status:** In review — built 2026-08-16. Three change entries raised and left **proposed**:
-CHG-033, CHG-034, CHG-035.
+**Status:** In review — built 2026-08-16, **blocked twice on the same day and remediated the same
+day**. Five change entries raised and left **proposed**: CHG-033, CHG-034, CHG-035, and — from the
+remediation — **CHG-036** and **CHG-037**.
 **Assigned to:** AI agent
 
 ---
@@ -192,6 +193,46 @@ observed, not what was expected.
 | Clearing one call is not clearing the job | Dismissing every report at the job fails **1** in `pytest` and **1** in the browser |
 | The migration round trip | The down migration not dropping `decision_records_dismiss_shape` before the rebuild fails **5**; the rebuild forgetting `damage_reports_seq` fails **1** |
 | One action, in the browser | Deleting `<DismissAlarmControl>` from `Report` fails **4**; removing `!reason.trim()` from `disabled` fails **1**; clearing the field before the write succeeds fails **1** |
+
+---
+
+## What the two reviews found, and what was done about it
+
+**Two reviews, both **Block**, the second on a byte-identical tree — so seven findings stood open
+at once: three from the first round, four from the second, two of them the same finding re-run.**
+Every fix below names the mutation that now turns it red, because that is the part a later reader
+can check. **Every mutation was applied, the named stage of the gate run, and reverted, and
+`git status --short` showed no unexpected file after each one.**
+
+**One migration, 015, and it is a new file rather than an edit to 014** — 008 and 009 were
+TASK-005's two remediations and 011 was TASK-006's, and a migration that has run is a fact about a
+database somebody may already hold.
+
+| Finding | What was done | Mutation that is now red |
+|---|---|---|
+| **The Block** — *exactly one audit row* was two pieces of service code and the store said nothing (criterion 7) | **CHG-036.** A partial `unique` index, `decision_records (subject_id) where kind = 'dismiss'`. No table is created and no trigger is dropped, so ADR-004 is not approached | The two service guards removed together (`if False and report["status"] …`, `where id = ? and ? is not null`) fails **3** — the 409 case, the **new identical-retry case**, and the restart case — and the identical retry that used to be answered `201` twice with **2** rows is now a `500` with **1**. Removing the **index** alone fails **3**: the store-level case and two migration cases |
+| …and the test that stood in the way of the fix | `test_the_store_accepts_a_dismissal_record_that_agrees_with_its_report` required `len(rows) == 2`. Its report is now dismissed by **direct statement**, which writes no audit row, so the permitted control is the only row and the assertion is `== 1`. What it proves is unchanged | Not a mutation: the assertion is `== 1` and the index would refuse `== 2`. The change is recorded in CHG-036 rather than left to be noticed |
+| The `coalesce` clause had never been fed the state it was written for (CHG-022) | Two new cases: an **unattached report dismissed through the endpoint** — the state no test had ever produced — and the same report with a payload claiming a job it has not | Deleting both `coalesce`s fails **2** where it used to leave all 499 green |
+| The `dismiss` row had a writer and no reader anyone had asked | `test_the_decision_record_reader_serves_the_dismissal` reads `GET /scenarios/{id}/decisions` as an admin and requires the row, its subject, its actor and its payload | `and kind <> 'dismiss'` in `decisions.read_all` fails **1** where it used to leave all 499 green |
+| **A live hole, no mutation needed** — three definitions of whitespace and the browser's was the strictest | **CHG-037.** One alphabet in `dispatch.BLANK_CODEPOINTS`, repeated in the schema as `char(...)` and in `frontend/lib/dismissal.ts`, with a test that reads all three | The schema's alphabet back to 014's six ASCII fails **9**; the service constant narrowed fails **14**; the browser's list shortened fails the tie; `String.prototype.trim()` back in the control fails **1 browser case** |
+| The same hole in `damage_reports_location_is_a_neighbourhood`, unreachable only because of a serialiser default | The same alphabet, and the five `instr` clauses become one `not glob '*[' \|\| char(…) \|\| ']*'` over the alphabet without the space | That check back to 014's form fails **5** UTEST-012 cases, four of them a whitespace-only neighbourhood written as raw UTF-8 |
+| `DISMISSAL_REASON_MAX` had a third copy tied to nothing and a fourth as a literal | One definition in `frontend/lib/dismissal.ts`; `lib/api.ts` re-exports it and the browser case imports it | The browser copy set to `8` fails **1**, where it used to leave `tsc`, `lint`, `build` and all 36 specs green |
+| `and r.scenario_id = new.scenario_id` was violated by no case | A dismissal record filed under a **second storm**, with that storm's record asserted empty afterwards | Deleting the clause fails **1** where it used to leave all 499 green |
+| REQ-NF-007's area figure at the dismissal call site was asserted by nothing | UTEST-012's three-way shape, carried across the module boundary: after the dismissal, **4** open in the storm, **2** in the neighbourhood, **1** for the asset — the wrong two asserted **absent**, and the pre-dismissal **3** as well | Replacing the call with a whole-storm count fails **1** where it used to leave all 499 green |
+| **Found while fixing, and it is not in either review** | The browser suite was **racing itself**. `fullyParallel: false` keeps one file serial; seven files still ran in seven workers against one SQLite database, and ATEST-007's *the empty board reads "no damage reported"* — whose docstring rests on *"nothing else in the suite files a damage report"* — was racing TASK-008's first case, which files one. It won for two tasks and lost the moment the timing shifted | `workers: 1`. Reverting it fails **1** (`ATEST-007`), and the untouched tree passes only by winning the race |
+
+**What was left alone, deliberately.** `store/scenarios.py` carries its own six-ASCII whitespace
+copy for `name` and `source_note` (CHG-031) and has the same hole; it belongs to TASK-009, and
+widening an entry already under review is the drift the register exists to catch. `json.dumps`
+keeps `ensure_ascii` at its default: the constraint is fixed first, so the tidy-up is safe when
+somebody makes it.
+
+**The two observations both reviews recorded are unchanged and still need a human.** CHG-035 says
+of the report and its audit row that *"neither can move afterwards"*, and a direct `update` still
+moves a dismissed report's `location` and `repair_job_id` while the record keeps the old ones;
+CHG-034 says that narrowness is deliberate. **The two proposed entries contradict each other about
+the same guarantee**, no code issues either statement, and whoever decides them should see both
+sentences rather than only the stronger one.
 
 ---
 

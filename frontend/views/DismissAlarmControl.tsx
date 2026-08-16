@@ -27,7 +27,7 @@
 
 import { useState } from 'react'
 
-import { DISMISSAL_REASON_MAX, RequestFailed, dispatch } from '@/lib/api'
+import { DISMISSAL_REASON_MAX, RequestFailed, dispatch, trimDismissalReason } from '@/lib/api'
 
 export function DismissAlarmControl({
   reportId,
@@ -45,7 +45,7 @@ export function DismissAlarmControl({
     setSaving(true)
     setProblem(null)
     try {
-      await dispatch.dismiss(reportId, reason.trim())
+      await dispatch.dismiss(reportId, trimDismissalReason(reason))
       // Not cleared on the way in. The field goes away with the row when the board re-reads,
       // and if the write failed the words are still here.
       await onDismissed()
@@ -73,7 +73,15 @@ export function DismissAlarmControl({
         placeholder="Tree was already cleared"
         maxLength={DISMISSAL_REASON_MAX}
       />
-      <button type="submit" data-testid="dismiss-submit" disabled={saving || !reason.trim()}>
+      <button
+        type="submit"
+        data-testid="dismiss-submit"
+        // `trimDismissalReason`, never `String.prototype.trim()`. The two disagree about a
+        // no-break space, an em space, U+200B and U+FEFF, and this layer being the stricter of
+        // them is what hid the hole: the button stayed disabled while the API answered `201`
+        // and stored the character as somebody's reason (CHG-037).
+        disabled={saving || trimDismissalReason(reason).length === 0}
+      >
         {saving ? 'Recording…' : 'Dismiss as false alarm'}
       </button>
       {problem && (

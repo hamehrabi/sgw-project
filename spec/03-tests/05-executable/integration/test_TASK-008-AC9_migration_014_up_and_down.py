@@ -1,4 +1,4 @@
-"""TASK-008 done criterion 9 — migration 014 has an up and a down, and both were run.
+"""TASK-008 done criterion 9 — migrations 014 and 015 have an up and a down, and both were run.
 
 Two branches nothing else reaches, for the reason TASK-006's, TASK-007's and TASK-009's
 equivalent files give: *the clause you never ran is the clause whose function you assumed.*
@@ -12,6 +12,10 @@ equivalent files give: *the clause you never ran is the clause whose function yo
   Asserted by issuing a real `UPDATE` and requiring the refusal, not by reading two names out of
   `sqlite_master` — a trigger can be present and wrong, which is why FF-004 is written the way
   it is.
+
+- **Their order.** 015 rebuilds the same table 014 rebuilds and recreates the same two triggers
+  against it, so it comes off **first** and goes back on **last**. That is the ordinary reverse
+  order and it is the third stack in this repository to need it stated (010/011, 011/012).
 
 **The upgrade path over data written while 014 was rolled back is the interesting half.** The
 older shape accepts a dismissal whose reason is `''` — that is the defect CHG-033 closes — and
@@ -30,8 +34,15 @@ MIGRATIONS = (
     pathlib.Path(__file__).resolve().parents[4] / "backend" / "app" / "store" / "migrations"
 )
 FOURTEEN = "014_a_dismissal_is_never_anonymous"
+# 015 is TASK-008's remediation and it is part of this trip, for the reason TASK-006's file
+# gives about 011 and TASK-007's about 012: **both** rebuild `damage_reports` and both recreate
+# the two triggers that read it, so they come off newest-first and go back on oldest-first. A
+# stack rolled back in the wrong order is not lossless, and an ops procedure is where that is
+# discovered at the worst moment.
+FIFTEEN = "015_one_audit_row_and_one_whitespace_alphabet"
 APPEND_ONLY = ("decision_records_no_update", "decision_records_no_delete")
 ADDED = ("damage_reports_dismissal_is_final", "decision_records_dismiss_shape")
+ONE_AUDIT_ROW_INDEX = "decision_records_one_dismissal_per_report"
 A_REASON = "Tree was already cleared - no damage to the line"
 
 
@@ -72,16 +83,31 @@ def table_sql(connection, table) -> str:
     ).fetchone()["sql"]
 
 
-def roll_back(connection) -> None:
-    connection.executescript((MIGRATIONS / f"{FOURTEEN}.down.sql").read_text(encoding="utf-8"))
-    connection.execute("delete from schema_migrations where name = ?", (f"{FOURTEEN}.up.sql",))
+def roll_back_one(connection, name: str) -> None:
+    connection.executescript((MIGRATIONS / f"{name}.down.sql").read_text(encoding="utf-8"))
+    connection.execute("delete from schema_migrations where name = ?", (f"{name}.up.sql",))
     connection.commit()
+
+
+def roll_back(connection) -> None:
+    """**Newest first.** 015 rebuilds the table 014 rebuilt and recreates the same two triggers
+    against it; taking 014 off first would leave 015's rebuild replacing a table that had already
+    been replaced, with the wrong pair of triggers reparsed onto it."""
+    roll_back_one(connection, FIFTEEN)
+    roll_back_one(connection, FOURTEEN)
 
 
 def roll_forward(connection) -> None:
     from app.store import migrate
 
-    assert migrate.run(connection) == [f"{FOURTEEN}.up.sql"]
+    assert migrate.run(connection) == [f"{FOURTEEN}.up.sql", f"{FIFTEEN}.up.sql"]
+
+
+def indexes(connection) -> set[str]:
+    return {
+        row[0]
+        for row in connection.execute("select name from sqlite_master where type = 'index'")
+    }
 
 
 def append_only_still_refuses(connection) -> None:
@@ -105,11 +131,63 @@ def test_the_down_migration_removes_only_what_this_migration_added(client, accou
     a_dismissed_report(client, scenario_id)
     assert set(ADDED) <= triggers(connection)
     assert set(APPEND_ONLY) <= triggers(connection)
+    assert ONE_AUDIT_ROW_INDEX in indexes(connection)
 
     roll_back(connection)
 
     assert not (set(ADDED) & triggers(connection))
+    assert ONE_AUDIT_ROW_INDEX not in indexes(connection)
     assert set(APPEND_ONLY) <= triggers(connection)
+    append_only_still_refuses(connection)
+
+
+def test_rolling_back_only_the_newer_migration_leaves_the_older_rule_intact(
+    client, accounts, application
+):
+    """015's down migration on its own. It takes off the wider whitespace alphabet and the
+    *one audit row* index and puts 014's two triggers back — no more and no fewer.
+
+    This is the half a stack test usually skips, and it is where a down migration that forgot to
+    recreate a trigger it had to drop would show: 015 drops both of 014's triggers before its
+    rebuild, so a rollback that did not restore them would leave the dismissal rules gone while
+    `schema_migrations` still claimed 014 was applied.
+    """
+    connection = application.state.db
+    scenario_id = load(client, accounts)
+    client.get(f"/api/v1/scenarios/{scenario_id}/risks")
+    a_dismissed_report(client, scenario_id)
+    actor = connection.execute("select id from users limit 1").fetchone()["id"]
+    second = client.post(
+        f"/api/v1/scenarios/{scenario_id}/damage-reports", json={"neighbourhood": "Saltmarsh"}
+    ).json()["report_id"]
+    nbsp = (
+        "update damage_reports set status = 'dismissed', dismissed_by = ?,"
+        " dismissed_reason = char(160) where id = ?"
+    )
+
+    with pytest.raises(sqlite3.IntegrityError, match="damage_reports_dismissal_is_attributed"):
+        connection.execute(nbsp, (actor, second))
+        connection.commit()
+    connection.rollback()
+
+    roll_back_one(connection, FIFTEEN)
+
+    # 014's rules are back and refusing; 015's are gone.
+    assert set(ADDED) <= triggers(connection)
+    assert ONE_AUDIT_ROW_INDEX not in indexes(connection)
+    connection.execute(nbsp, (actor, second))
+    connection.commit()
+    assert connection.execute(
+        "select dismissed_reason from damage_reports where id = ?", (second,)
+    ).fetchone()["dismissed_reason"] == chr(160), (
+        "014 alone accepts a no-break space as somebody's reason, which is why 015 exists"
+    )
+    with pytest.raises(sqlite3.IntegrityError, match="never rewritten"):
+        connection.execute(
+            "update damage_reports set dismissed_reason = 'other' where id = ?", (second,)
+        )
+        connection.commit()
+    connection.rollback()
     append_only_still_refuses(connection)
 
 
@@ -216,6 +294,7 @@ def test_the_round_trip_keeps_every_row_and_the_board_still_works(client, accoun
         for table in counted
     } == counted
     assert set(ADDED) <= triggers(connection)
+    assert ONE_AUDIT_ROW_INDEX in indexes(connection)
     append_only_still_refuses(connection)
     dismissed = connection.execute(
         "select * from damage_reports where id = ?", (report_id,)

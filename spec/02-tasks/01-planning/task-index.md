@@ -224,6 +224,40 @@ why* meant *whoever wrote it last* — CHG-026's finding one table over) and **C
 and no shape, while AC-008 requires **any** human decision to be appended — the third instance of
 CHG-021's pattern, after `duplicate` and `placement`).
 
+**TASK-008 was reviewed twice on 2026-08-16, blocked both times, and the second review found the
+tree byte-identical to the first — so seven findings stood open at once.** The Block, in both
+rounds, was done criterion 7: *exactly one `decision_records` row of kind `dismiss`* lived in the
+endpoint's `409` branch and one `where` clause, and with both removed an **identical** retry was
+answered `201` twice and left two audit rows for one human decision. The re-review added that a
+test *required* that behaviour — inserting a second `dismiss` row directly and asserting
+`len(rows) == 2` — so the fix had to correct an assertion before it could add a rule. It also
+found the first defect in this repository that needed **no mutation at all**: a dismissal reason
+of one no-break space, em space, zero-width space or U+FEFF was answered `201` and stored, because
+what counts as whitespace was written three times and the strictest of the three was the browser's.
+
+**All seven findings and both observations are fixed, and TASK-008 is still not Done.** Migration
+**015** puts *one human decision, one audit row* in the store as a partial `unique` index that
+creates no table and drops no trigger (**CHG-036**), and replaces the six-ASCII whitespace
+alphabet with one list held identically by the schema, `store/dispatch.py` and
+`frontend/lib/dismissal.ts`, tied by a test that fails when any two disagree (**CHG-037**). The
+same alphabet closes the identical hole in `damage_reports_location_is_a_neighbourhood`, which was
+being held shut by `json.dumps`' `ensure_ascii` default one module away. The `coalesce` clause now
+has the state it was written for — a report belonging to no repair job, dismissed through the
+endpoint — the `dismiss` row is asserted at `GET /scenarios/{id}/decisions`, the storm clause has a
+case of its own, the dismissal's area figure has UTEST-012's three-way assertion, and the bound's
+third and fourth copies are tied to the server's. **One defect was found while fixing and is in
+neither review:** the browser suite was racing itself — `fullyParallel: false` keeps one *file*
+serial while seven files ran in seven workers against one SQLite database, so ATEST-007's
+empty-board case had been racing TASK-008's first case ever since TASK-008 was written, and won
+only by luck. Suite **534 + 1 skipped**, whole gate green, every fix mutation-checked
+(`TASK-008.md`, *What the two reviews found, and what was done about it*).
+
+**Twenty-two change entries are open and none is accepted**, after **CHG-036** and **CHG-037** —
+and **two of them contradict each other**: CHG-035 says a dismissed report and its audit row
+*"can never disagree — neither can move afterwards"*, while CHG-034 says the narrowness that still
+lets a direct `update` move that report's `location` and `repair_job_id` is deliberate. Whoever
+decides them should see both sentences.
+
 **The ordering defect was never TASK-005's alone**, which is why this row matters to TASK-004 as
 well: `decision_records` has been intermittently mis-ordered since migration 006, and
 `latest_recommendation` could return the wrong recommendation outright. That is fixed by the

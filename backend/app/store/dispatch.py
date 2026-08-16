@@ -29,6 +29,7 @@ that explains its own copy of the SQL proves nothing about the SQL that runs.
 """
 
 import json
+import re
 import sqlite3
 import uuid
 from datetime import UTC, datetime
@@ -77,14 +78,68 @@ NEIGHBOURHOOD_MAX = 120
 # a person's own sentence about why — so it is the same number rather than a new one.
 DISMISSAL_REASON_MAX = 2000
 
+# **What counts as whitespace is one alphabet, written once** (CHG-037).
+#
+# It used to be written three times and the three disagreed. The schema enumerated six ASCII
+# characters, this module repeated the same six, and the browser used JavaScript's
+# `String.prototype.trim()`, which is Unicode-aware — so `POST /damage-reports/{id}/dismiss`
+# with a reason of U+00A0, U+2003, U+200B or U+FEFF was answered **201** and that character was
+# what `dismissed_reason` and the audit row then held. `'   '` was refused and a no-break space
+# was stored: *the same non-answer wearing a different whitespace character*, which is CHG-023's
+# own sentence, for the third time in this repository, on the very column CHG-033 closed for
+# ASCII. It was invisible on screen precisely because the strictest of the three definitions was
+# the **browser's**, which is the layer ADR-002 says enforcement must never live in.
+#
+# Enumerated rather than left to a library, for CHG-033's reason: SQLite has no notion of
+# Unicode whitespace at all, `trim(X, Y)` can only be given the characters to remove, and
+# Python's `str.split()`, JavaScript's `trim()` and Unicode's own `White_Space` property are
+# three different sets. A rule written as *whatever this language calls blank* is three rules.
+#
+# The list is every character the three layers could disagree about: the six ASCII ones, the
+# four information separators `str.split()` already collapsed, Unicode's `White_Space` additions
+# and the two invisibles that are **not** `White_Space` and are exactly what a caller reaches
+# for — U+200B ZERO WIDTH SPACE and U+FEFF ZERO WIDTH NO-BREAK SPACE.
+#
+# `test_one_alphabet_decides_what_is_blank_in_every_layer` reads this tuple back out of
+# `sqlite_master` and out of `frontend/lib/dismissal.ts` and requires all three to be identical.
+BLANK_CODEPOINTS = (
+    0x09, 0x0A, 0x0B, 0x0C, 0x0D,                    # tab, newline, vertical tab, form feed, CR
+    0x1C, 0x1D, 0x1E, 0x1F,                          # the four information separators
+    0x20,                                            # space
+    0x85,                                            # next line
+    0xA0,                                            # no-break space
+    0x1680,                                          # ogham space mark
+    0x2000, 0x2001, 0x2002, 0x2003, 0x2004, 0x2005,  # en quad … figure space
+    0x2006, 0x2007, 0x2008, 0x2009, 0x200A,          # … hair space
+    0x200B,                                          # zero width space — invisible, not blank
+    0x2028, 0x2029,                                  # line and paragraph separators
+    0x202F,                                          # narrow no-break space
+    0x205F,                                          # medium mathematical space
+    0x3000,                                          # ideographic space
+    0xFEFF,                                          # zero width no-break space
+)
+
+WHITESPACE = "".join(chr(point) for point in BLANK_CODEPOINTS)
+
+# Every run of the alphabet, so a neighbourhood is collapsed the way the store's own check
+# requires it to have been collapsed. `" ".join(value.split())` was the same idea against a
+# different alphabet, which is the disagreement above.
+_BLANK_RUN = re.compile("[" + re.escape(WHITESPACE) + "]+")
+
 
 def _now() -> str:
     return datetime.now(UTC).isoformat()
 
 
 def normalise(neighbourhood: str) -> str:
-    """The name as it will be shown: trimmed, with runs of whitespace collapsed."""
-    return " ".join((neighbourhood or "").split())
+    """The name as it will be shown: trimmed, with runs of whitespace collapsed.
+
+    Whitespace means `WHITESPACE` and nothing wider or narrower (CHG-037). This function has to
+    agree with `damage_reports_location_is_a_neighbourhood` exactly: it produces the only form
+    that constraint accepts, so a character this collapses and the schema refuses — or the other
+    way round — turns the specified `400 validation_error` into a `500 internal_error`.
+    """
+    return _BLANK_RUN.sub(" ", neighbourhood or "").strip(" ")
 
 
 def location_key(neighbourhood: str) -> str:
@@ -116,9 +171,6 @@ def too_long(neighbourhood: str) -> bool:
     )
 
 
-WHITESPACE = " \t\n\v\f\r"
-
-
 def dismissal_reason(value: str) -> str | None:
     """The reason as the store will hold it, or `None` if the store would refuse it.
 
@@ -132,6 +184,12 @@ def dismissal_reason(value: str) -> str | None:
     one-argument `trim()` strips spaces alone, which is how `'\\t\\n'` became a storable
     neighbourhood beside a refused `'   '` (CHG-023); the schema uses the two-argument form and
     this function has to agree with it or the two disagree about which reasons are reasons.
+
+    **And "every whitespace character" is `WHITESPACE`, not the six ASCII ones** (CHG-037). The
+    alphabet was written three times and the three disagreed, so a reason of one no-break space
+    was a `201` and was stored under a dispatcher's name. Only the ends are governed: a reason
+    is somebody's sentence, so an internal newline is not a defect and neither is an internal
+    no-break space — what the rule refuses is a reason made of nothing.
     """
     reason = (value or "").strip(WHITESPACE)
     if not reason or len(reason) > DISMISSAL_REASON_MAX:

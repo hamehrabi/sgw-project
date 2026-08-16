@@ -2,6 +2,11 @@ import path from 'node:path'
 
 import { expect, Page, test } from '@playwright/test'
 
+// Imported rather than repeated. Written out as `'N'.repeat(2001)` this was a **fourth** copy of
+// a bound the schema, `store/dispatch.py` and `lib/api.ts` each already held, and the only one
+// of the four that no test tied to any other (CHG-037).
+import { DISMISSAL_REASON_MAX } from '../lib/dismissal'
+
 /**
  * TASK-008 done criterion 11 — REQ-F-008, US-010, `DismissAlarmControl`.
  *
@@ -87,6 +92,14 @@ test('the control is offered on every open report and refuses an empty reason', 
   await expect(job.getByTestId('dismiss-submit')).toBeDisabled()
   await job.getByTestId('dismiss-reason').fill('   ')
   await expect(job.getByTestId('dismiss-submit')).toBeDisabled()
+  // The same non-answer wearing a different whitespace character (CHG-037). These four were the
+  // hole: the browser refused them, the API answered `201`, and the stored reason under a
+  // dispatcher's name was one invisible character. The button is disabled here **and** the
+  // server refuses them now, and the two agree because they read one alphabet.
+  for (const blank of ['\u00a0', '\u2003', '\u200b', '\ufeff']) {
+    await job.getByTestId('dismiss-reason').fill(blank)
+    await expect(job.getByTestId('dismiss-submit')).toBeDisabled()
+  }
 
   await job.getByTestId('dismiss-reason').fill('x')
   // Brevity is not the rule — one character is a reason, and the control must not invent a
@@ -105,7 +118,7 @@ test('a refused dismissal keeps the typed reason and leaves the report on the bo
   // Over the server's bound by one character. The client field is capped at the same number, so
   // the value is set directly — the point of the case is what the screen does with a `400`, and
   // a reason lost to a refused write is the failure this control is written against.
-  const tooLong = 'N'.repeat(2001)
+  const tooLong = 'N'.repeat(DISMISSAL_REASON_MAX + 1)
   await job.getByTestId('dismiss-reason').evaluate((field, value) => {
     const input = field as HTMLInputElement
     input.removeAttribute('maxlength')

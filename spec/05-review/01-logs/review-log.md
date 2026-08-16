@@ -33,7 +33,68 @@
 
 | 2026-08-16 | **TASK-008 re-reviewed against its own done criteria, after the Block above** — and **on the same tree**: `git diff` between the build commit and this one touches `review-log.md` and nothing else, so nothing the previous review found has been remediated. Migration 014 up and down, `store/dispatch.py`, `store/decisions.py`, `api/dismissals.py`, `api/views.py`, `api/scenarios.py`'s decision-record read, `views/DismissAlarmControl.tsx`, `DispatchBoard.tsx`, `lib/api.ts`, and the three executable files | TASK-008 / REQ-F-008, REQ-F-009, AC-008, ADR-002, CON-003, CHG-033…CHG-035 | A third agent run, which **neither wrote TASK-008 nor reviewed it before** — but author and both reviewers are the same process (**Q-026**, see the note below) | Requirement fit · Architecture fit · Security & validation · Test evidence · Change scope | **The full gate is green — `pytest` 499 + 1 skipped over two clean runs, `ruff`, `ci/fitness.py` (6 of 7 wired, FF-006 at 7 of 7, FF-004 refusing a real `UPDATE`), `ci/evals.py`, `tsc`, `lint`, `build` and all 36 Playwright specs — and all four directed checks failed.** Three of the four are new, chosen deliberately away from the previous round. **The Block stands and its mutation reproduces exactly:** with the endpoint's `409` branch and `dismiss_report`'s `status <> ?` guard removed, an **identical** retry is answered `201` twice and leaves **2** `dismiss` rows; the two tests that go red retry with different words and fail on a `500`, not on a duplicate row. New evidence on the same finding: `test_the_store_accepts_a_dismissal_record_that_agrees_with_its_report` does not merely miss *one human decision, one audit row* — it **asserts its absence**, inserting a second `dismiss` row for an already-dismissed report directly and requiring `len(rows) == 2`. **A second clause nothing has ever read back**, and a different one from the previous round: `coalesce(r.repair_job_id, '') = coalesce(…)` exists so a report belonging to no repair job (CHG-022) can be recorded — replacing both `coalesce`s with plain equality leaves **all 499 green**, and under it dismissing an unattached report is a `500` while `DispatchBoard` goes on rendering a `DismissAlarmControl` on every one of them. **The `dismiss` row has a writer and no reader anyone has asked:** `and kind <> 'dismiss'` in `decisions.read_all` leaves **all 499 green** while `GET /scenarios/{id}/decisions` — REQ-F-009's artefact — silently omits every cleared false alarm. **And what counts as whitespace is written three times and the three disagree:** with **no mutation at all**, a dismissal reason of `" "`, `" "`, `"​"` or `"﻿"` is answered **`201`** and stored as the reason, while `'   '` is refused — *the same non-answer wearing a different whitespace character*, CHG-023's own sentence for the third time, on the column CHG-033 was written to close. Beside it, `DISMISSAL_REASON_MAX`'s third copy (`frontend/lib/api.ts`) set to `8` leaves `tsc`, `lint`, `build` and all 36 browser specs green — the previous round's observation, unremediated and re-run. **No finding requires a specification decision, so no change entry is raised** — CHG-033, CHG-034 and CHG-035 stand proposed, and the whitespace hole is evidence bearing on CHG-033 rather than a new entry. | **Block** | The three findings of the previous round, all still open, plus: extend CHG-033's `trim` alphabet past ASCII (or refuse a reason whose characters are all whitespace by a rule that does not enumerate them) and add the case for each; feed the `coalesce` clause the state it was written for and give the board's unattached report a dismissal test; assert the `dismiss` row at `GET /decisions`; tie the frontend's copy of the bound to the server's. The twenty proposed entries still need a human decision |
 
+| 2026-08-16 | **TASK-008 remediation, answering both Blocks at once** — migration **015** up and down, `store/dispatch.py`, `frontend/lib/dismissal.ts` (new), `frontend/lib/api.ts`, `views/DismissAlarmControl.tsx`, `frontend/playwright.config.ts`, `e2e/TASK-008.spec.ts`, `test_UTEST-011_dismissal_never_anonymous.py`, `test_UTEST-012_damage_location_aggregated.py` and `test_TASK-008-AC9_migration_014_up_and_down.py` | TASK-008 / REQ-F-008, REQ-F-009, AC-008, REQ-NF-007, ADR-002, ADR-004, CON-003, CHG-033…CHG-037 | The agent that fixed both Blocks — **not a reviewer, and this row is not an acceptance** (the note under TASK-005's remediation rows applies unchanged) | Requirement fit · Architecture fit · Security & validation · Test evidence · Change scope | **All seven findings across the two rounds are closed, each with the mutation that now makes it red recorded in `TASK-008.md`.** **The Block is answered in the store**: `decision_records_one_dismissal_per_report`, a partial `unique` index that creates no table and drops no trigger (**CHG-036**) — with the two service guards removed, an identical retry is now a `500` and **one** audit row instead of `201` twice and two. The test that *required* the opposite — `len(dismiss_record(connection)) == 2` — was not deleted: its report is dismissed by direct statement, which writes no audit row, so the permitted control is the only row and it proves exactly what it proved before. **The live whitespace hole is closed at the layer ADR-002 names**: one alphabet in `dispatch.BLANK_CODEPOINTS`, repeated in the schema as `char(...)` and in `frontend/lib/dismissal.ts`, with a test that reads all three and fails when any two disagree (**CHG-037**) — and the same alphabet closes `damage_reports_location_is_a_neighbourhood`, whose whitespace-only hole was being held shut by `json.dumps`' `ensure_ascii` default one module away. The bound's third and fourth copies are tied to the server's by a test that walks every `.ts`/`.tsx` file. The `coalesce` clause has the state it was written for — a report belonging to **no repair job**, dismissed through the endpoint — in both directions. The `dismiss` row is asserted at `GET /scenarios/{id}/decisions`. The storm clause has a case of its own. The dismissal's area figure has UTEST-012's three-way assertion, carried across the module boundary. **One defect was found while fixing and is in neither review:** the browser suite was racing itself — `fullyParallel: false` keeps one *file* serial while seven files ran in seven workers against one SQLite database, so ATEST-007's empty-board case was racing TASK-008's first case, which files a damage report; it won for two tasks and lost the moment the timing shifted. `workers: 1`. Suite **534 + 1 skipped**, `ruff`, `ci/fitness.py` (6 of 7 wired, FF-006 at 7 of 7, FF-004 refusing a real `UPDATE`), `ci/evals.py`, `tsc`, `lint`, `build` and all **36** Playwright specs pass. Two change entries raised and left **proposed**: **CHG-036** and **CHG-037**. | **Fixed — awaiting re-review** | Twenty-two proposed entries now need a human decision, and two of them contradict each other — CHG-035 says a dismissed report *“cannot move afterwards”* and CHG-034 says the narrowness that lets its `location` and `repair_job_id` move is deliberate; a re-review should start with the partial index against a concurrent second writer, and with `store/scenarios.py`, which still holds the six-ASCII alphabet CHG-037 replaced one module over |
+
 **Decision values:** Accept · Accept with follow-up · Revise · Reject · Block
+
+### The remediation of both TASK-008 Blocks — seven findings, one migration, and a race nobody had looked for
+
+**Two Blocks were open at once and this section answers both.** The re-review of 2026-08-16 was
+run on a byte-identical tree, so its four checks stand beside the first round's three rather than
+replacing them; two of the seven are the same finding re-run and are fixed once. **Every mutation
+below was applied, the named stage of the gate run, and reverted, and `git status --short` showed
+no unexpected file after each one.** The full table, with counts, is in `TASK-008.md`.
+
+**The Block is in the store now, and the shape of the fix was decided by a test that had to be
+corrected first.** `decision_records_one_dismissal_per_report` is a partial `unique` index on
+`decision_records (subject_id) where kind = 'dismiss'` — the remedy the first review named,
+chosen because it creates no table and drops no trigger, which is what keeps ADR-004 out of it.
+The re-review's new evidence was that `test_the_store_accepts_a_dismissal_record_that_agrees_with
+_its_report` did not merely miss *one human decision, one audit row*: it **asserted its absence**,
+dismissing its report through the endpoint and then inserting a second `dismiss` row directly with
+`assert len(rows) == 2`. **The test was not weakened and it was not deleted.** Its report is now
+dismissed by a direct statement, which writes no audit row at all, so the permitted control is the
+*only* row and the assertion is `== 1`. What the control proves is unchanged — it is still the
+accepted shape without which the six refusals below it would be satisfied by a trigger that
+refuses every `dismiss` row — and the store no longer has a property in the suite that
+contradicts the requirement. The correction is written into CHG-036 rather than left to be
+noticed, because a reviewer who finds an assertion inverted in a remediation is entitled to see it
+argued rather than discovered.
+
+**The whitespace hole is the third instance of one sentence and the first that needed no mutation
+at all.** CHG-023 wrote it about a location, CHG-033 about a reason, and both times the fix
+enumerated six ASCII characters — which is right about the alphabet it names and silent about
+every other. What made this one different is *where* the strictest definition lived: in the
+browser, whose `String.prototype.trim()` is Unicode-aware, so the button stayed disabled and
+nobody could see that the API answered `201` to a reason of one no-break space. **An enforcement
+that is strictest in the layer ADR-002 forbids is worse than one that is missing**, because the
+screen is what everybody looks at. The alphabet is now one list, and the tie that fails when the
+copies disagree is the same shape `AGENT.md` already carries for a bound.
+
+**And the same alphabet closes a hole in a different column that nothing could reach.**
+`damage_reports_location_is_a_neighbourhood` accepted a whitespace-only neighbourhood written as
+raw UTF-8; the only thing refusing it was `json.dumps`' `ensure_ascii` default in a module one
+directory away, which escaped the character and tripped an unrelated clause. `ensure_ascii=False`
+is an ordinary tidy-up and the obvious one the day a neighbourhood needs an accent — so the
+constraint is fixed **first** and the serialiser is deliberately left alone, which is CHG-024's
+rule about not smuggling a change inside a remediation for something else.
+
+**One defect was found while fixing and appears in neither review, and it is the most
+uncomfortable of the eight.** `playwright.config.ts` carries the comment *"one backend, one
+database, one storm at a time"* beside `fullyParallel: false` — and that setting does not deliver
+the sentence. It keeps the tests inside one file serial; **separate files still run in parallel
+workers**, and on this machine that was seven files in seven workers against one SQLite file.
+Three of them load the same storm and TASK-008's first case files a damage report, so ATEST-007's
+*the empty board reads "no damage reported"* — whose own docstring rests on *"nothing else in the
+suite files a damage report"* — has been racing a file that does ever since TASK-008 was written.
+It won three runs out of three on the untouched tree and lost two out of two here, on a change
+that touches neither file's logic. **A green that depends on winning a race is not evidence**, and
+the fix is `workers: 1`: 58 seconds instead of 30, and the same answer every time.
+
+**What this round did not do.** `store/scenarios.py` still holds its own six-ASCII whitespace copy
+for `name` and `source_note` (CHG-031) with the identical hole; it belongs to TASK-009, which is
+in review, and widening an entry under review is the drift the change register exists to catch. It
+is named here so the next reviewer does not have to find it twice.
 
 ### The re-review of TASK-008 — four checks, four of them failed
 

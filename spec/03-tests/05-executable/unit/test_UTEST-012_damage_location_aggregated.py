@@ -93,6 +93,22 @@ def everything_logged(caplog):
         '{"neighbourhood": "   "}',
         '{"neighbourhood": "\\t\\n"}',
         json.dumps({"neighbourhood": OVER_THE_LIMIT}),
+        # CHG-037, and these are written as **raw UTF-8** on purpose. Every clause of the check
+        # accepted them: `length` is 1, SQLite's one-argument `trim()` strips spaces only, the
+        # five `instr` clauses named char(9) to char(13), and `json(location) = json_object(...)`
+        # agreed because both sides held the same raw character. The only thing refusing them was
+        # `json.dumps`' `ensure_ascii` default one module away, which escaped the character and
+        # tripped the *unrelated* json clause instead — so CON-003's guard against *a location
+        # that is not a place* was being held up by a serialiser default, and the day a
+        # neighbourhood needs an accent that default changes.
+        '{"neighbourhood": " "}',
+        '{"neighbourhood": "　"}',
+        '{"neighbourhood": "​"}',
+        '{"neighbourhood": "﻿"}',
+        # Not blank, but not normalised either: a no-break space inside a name is a second
+        # spelling of one neighbourhood, and `dispatch.normalise` produces the single-space form.
+        # CHG-023's rule — the store refuses what the writer would never have produced.
+        '{"neighbourhood": "North gate"}',
     ],
 )
 def test_the_store_refuses_a_location_finer_than_a_neighbourhood(
@@ -218,7 +234,24 @@ def test_the_endpoint_refuses_an_over_length_neighbourhood_as_a_400_not_a_500(
     ).fetchone()[0] == 1
 
 
-@pytest.mark.parametrize("blank", ["", "   ", "\t\n "])
+@pytest.mark.parametrize(
+    "blank",
+    [
+        "",
+        "   ",
+        "\t\n ",
+        # CHG-037. `" ".join(value.split())` collapsed Python's idea of whitespace, which is
+        # neither the schema's nor the browser's: U+200B and U+FEFF survived it, so a
+        # neighbourhood of one invisible character reached the store and was answered with a
+        # `500 internal_error` where the contract specifies a `400 validation_error` — the same
+        # gap this file already records between a bound and its copy.
+        " ",
+        "　",
+        "​",
+        "﻿",
+    ],
+    ids=["empty", "spaces", "ascii-blanks", "U+00A0", "U+3000", "U+200B", "U+FEFF"],
+)
 def test_the_endpoint_refuses_a_neighbourhood_that_is_not_a_place(
     client, application, accounts, blank
 ):
