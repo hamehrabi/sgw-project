@@ -151,6 +151,53 @@ export interface Ranking {
   total: number
 }
 
+/**
+ * A damage report. **Its location is a neighbourhood and can be nothing else** — the store
+ * refuses anything finer (CON-003, REQ-NF-007), so no screen and no export has a household
+ * to leak. An asset is named by `asset_id`, never by a coordinate.
+ */
+export interface DamageReport {
+  report_id: string
+  asset_id: string | null
+  repair_job_id: string | null
+  location: { neighbourhood: string | null }
+  reported_at: string
+  reported_by: string
+  status: 'open' | 'duplicate' | 'dismissed'
+}
+
+export interface RepairJob {
+  job_id: string
+  status: 'pending' | 'in_progress' | 'done'
+  /** Null in version one. The board is never ordered by a score, rank or band. */
+  priority_rank: number | null
+  /** A note about what people decided. The platform assigns nobody (BR-001). */
+  assigned_to: string | null
+  location: { neighbourhood: string | null }
+  created_at: string
+  updated_at: string
+  report_count: number
+  reports: DamageReport[]
+}
+
+export interface Board {
+  scenario_id: string
+  items: RepairJob[]
+  job_count: number
+  report_count: number
+}
+
+export const dispatch = {
+  board: (id: string) => request<Board>(`/api/v1/scenarios/${id}/jobs`),
+
+  /** Two reports at one location join one job — decided by the server, never by this list. */
+  fileReport: (id: string, neighbourhood: string, assetId: string | null) =>
+    request<DamageReport>(`/api/v1/scenarios/${id}/damage-reports`, {
+      method: 'POST',
+      body: JSON.stringify({ neighbourhood, asset_id: assetId }),
+    }),
+}
+
 export const scenarios = {
   risks: (id: string) => request<Ranking>(`/api/v1/scenarios/${id}/risks`),
 

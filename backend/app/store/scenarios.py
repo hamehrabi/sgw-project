@@ -121,6 +121,13 @@ def assets_for(connection, scenario_id) -> list[sqlite3.Row]:
     ).fetchall()
 
 
+def find_asset(connection, scenario_id, asset_id) -> sqlite3.Row | None:
+    """Scoped by scenario on purpose: an asset id from another storm is not an asset here."""
+    return connection.execute(
+        "select * from assets where scenario_id = ? and id = ?", (scenario_id, asset_id)
+    ).fetchone()
+
+
 def asset_count(connection, scenario_id) -> int:
     return connection.execute(
         "select count(*) from assets where scenario_id = ?", (scenario_id,)

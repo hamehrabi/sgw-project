@@ -198,3 +198,21 @@ body {
 .decision button { align-self: flex-start; padding: 0.5rem 0.9rem; font: inherit; cursor: pointer; }
 .decision__note { color: var(--muted); font-size: 0.88rem; margin: 0.25rem 0 0; }
 .decision--done { border-color: #2f7a45; background: #eefaf1; }
+
+/* --- TASK-005: the dispatch board --- */
+.board { margin: 0 0 2rem; }
+.board__form { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; margin-bottom: 1rem; }
+.board__form label { font-weight: 600; }
+.board__form input { font: inherit; padding: 0.4rem 0.5rem; border: 1px solid var(--line); border-radius: 4px; min-width: 14rem; }
+.board__form button { padding: 0.45rem 0.9rem; font: inherit; cursor: pointer; }
+.board__note { flex-basis: 100%; margin: 0; color: var(--muted); font-size: 0.88rem; }
+.board__summary { color: var(--muted); }
+.board__jobs { list-style: none; margin: 0; padding: 0; }
+
+.job { border: 1px solid var(--line); border-radius: 6px; padding: 0.6rem 0.8rem; margin-bottom: 0.6rem; }
+.job__head { margin-bottom: 0.3rem; }
+/* The status carries its word; colour is never the only signal (WCAG 2.1 AA, Q-013). */
+.job__status { border: 1px solid var(--muted); border-radius: 3px; padding: 0.05rem 0.4rem; font-size: 0.82rem; }
+.job__count { color: var(--muted); font-size: 0.88rem; }
+.job__reports { margin: 0; padding-left: 1.1rem; font-size: 0.9rem; }
+.job__time { font-variant-numeric: tabular-nums; color: var(--muted); }

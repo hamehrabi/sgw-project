@@ -12,7 +12,7 @@
 | TASK-002 | Upload and parse a prepared storm into the joined asset view — **and wire FF-001 and FF-006** | REQ-F-001, REQ-F-010, REQ-NF-003, SEC-Z-002, FF-001, FF-006 | P0 | TASK-001 | **Done** | agent | ATEST-001, ATEST-002, ATEST-009, ATEST-010, UTEST-002…008, ITEST-001, FTEST-001…003, STEST-005…007, E2E-002 |
 | TASK-003 | Ranked risk list with plain-words reasons, scored by a deterministic rule (ADR-005) | REQ-F-002, REQ-F-003, BR-002, FF-007 | P0 | TASK-002 | **Done** | agent | ATEST-003, ATEST-004, UTEST-009, UTEST-010, FTEST-004, EVAL-001, PTEST-001 |
 | TASK-004 | Accept, change, or reject a recommendation, writing the append-only record | REQ-F-006, REQ-F-009, BR-001, BR-004, FF-004, FF-005 | P1 | TASK-003 | **Done** | agent | ATEST-006, ATEST-008, ITEST-002, FTEST-005, STEST-008 |
-| TASK-005 | Dispatch board — one shared damage and repair list | REQ-F-007 | P1 | TASK-002 | Not started | agent | ATEST-007, ITEST-003, PTEST-002 |
+| TASK-005 | Dispatch board — one shared damage and repair list | REQ-F-007, REQ-NF-007 | P1 | TASK-002 | **Done** | agent | ATEST-007, ITEST-003, PTEST-002, UTEST-012 |
 | TASK-006 | Re-rank on a forecast change, keeping the previous order | REQ-F-004 | P1 | TASK-003 | Not started | agent | ATEST-005, ITEST-004 |
 | TASK-007 | Record a crew placement against the ranking | REQ-F-005 | P1 | TASK-003 | Not started | agent | E2E-001 |
 | TASK-008 | Dismiss a false alarm in one action | REQ-F-008 | P1 | TASK-005 | Not started | agent | UTEST-011 |
@@ -55,6 +55,15 @@ its author — `review-log.md` records why (Q-026) rather than letting the signa
 otherwise. The paragraph that stood here said its done criteria were incomplete because Q-021 had
 not set a session duration; **ADR-006 answered it**, and both limits are read from configuration
 with a test that uses a value other than the default.
+
+**TASK-005 is Done, and it carries the first two change entries that are not accepted.**
+**CHG-016** (no endpoint creates a damage report) and **CHG-017** (`repair_jobs` had nowhere to
+keep the location it answers, and `damage_reports.location` had no fixed resolution) are
+**proposed**: the build could not proceed without deciding both, and neither decision is the
+agent's to accept. The row above gains **REQ-NF-007** and **UTEST-012** for the same reason —
+`traceability.md` already puts that requirement on TASK-002 and TASK-005, and this is the first
+task in which a damage location exists to be aggregated, so it is the first task where the rule
+can be broken.
 
 **TASK-010 shrank, and TASK-002 grew, at that review** (CHG-010). FF-001 and FF-006 move into
 TASK-002, which is the task that first creates enough modules for an import cycle to exist and

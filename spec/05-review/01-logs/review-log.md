@@ -15,7 +15,36 @@
 
 | 2026-08-15 | TASK-004 output — migration 006 with both triggers, `store/decisions.py`, the decision and decision-record endpoints, `RecommendationDecision`, FF-004 and FF-005 wired | TASK-004 / REQ-F-006, REQ-F-009, BR-001, BR-004 | The developer (**also the author** — same Q-026 conflict) | Requirement fit · Architecture fit · Security & validation · Test evidence · Change scope | All four checks held. **One acceptance criterion could not be met as written** — AC-009's refusal record had nowhere to live — raised rather than quietly dropped, and settled by the developer as **CHG-015**. | **Accept** | TASK-010 is now FF-003 alone |
 
+| 2026-08-16 | TASK-005 output — migration 007 (`repair_jobs`, `damage_reports`), `store/dispatch.py`, the report and board endpoints, `DispatchBoard`, four executable tests | TASK-005 / REQ-F-007, REQ-NF-007, AC-007 | The developer (**also the author** — same Q-026 conflict, fifth time) | Requirement fit · Architecture fit · Security & validation · Test evidence · Change scope | **One of the four tests written for this task could not fail, and the mutation check is what found it.** Two specification gaps raised and left **proposed** rather than self-accepted: **CHG-016** (no endpoint creates a damage report) and **CHG-017** (`repair_jobs.location_key` + the resolution of `damage_reports.location`). | **Accept with follow-up** | CHG-016 and CHG-017 need a human decision; TASK-008 writes the dismissal against columns 007 already carries |
+
 **Decision values:** Accept · Accept with follow-up · Revise · Reject · Block
+
+### TASK-005's checks — the fifth review, and the first to find a test that proved nothing
+
+Every test written for this task was mutation-checked: 26 mutations, each breaking one claim and
+running only the tests that assert it.
+
+| Check | Result |
+|---|---|
+| Both halves of AC-007 hold, and pull against each other | Held. *One job* is the de-duplication; *both visible* is the refusal to lose the second radio call. Mutation: making the second report at a location return the first — a plausible "de-duplicate" implementation — keeps the job count at one and turns two tests red. |
+| The rule survives a service that forgets to look first | Held, **by the schema**. `unique (scenario_id, location_key)` on `repair_jobs`; the second job inserted **directly against the database** is refused. Mutation: removing the constraint leaves every functional test green and fails that one, which is the whole argument for ADR-002. |
+| The grouping rule can be **absent** | Held. TASK-002's technique reused: a constant location key (one job for the whole storm) satisfies every "two reports, one job" assertion and fails *two locations produce two jobs*; a unique key per report fails the other three. Neither state is reachable now. |
+| A household-level location can neither get in nor out | Held, three ways. The endpoint refuses an unknown field rather than dropping it; the store refuses seven location shapes including `{}` and a coordinate pair; the board carries `asset_id` and no coordinate, though the asset row stores one. Mutations on each turn the matching test red. |
+| The board query is indexed, and constant in the report count | Held. Mutation: fetching reports per job passes every functional test and fails the statement-count assertion at 200 reports; removing the index fails the query-plan assertion. |
+| **The "no reasons-only endpoint" check is real** | **It was not.** It walked `application.routes` for a path containing "reason" — and this FastAPI wraps `include_router` in a route whose own `path` is `None`, so the walk saw four documentation routes and **none of the ten endpoints**. It passed on its first run and stayed green when the mutation added a `/reasons` endpoint. Rewritten against the published OpenAPI paths, with a positive assertion beside it so a blind enumeration fails instead of passing. Now red under the same mutation. |
+
+**That finding is the fourth instance of a gate that cannot fail** — after FF-002 (CHG-010),
+FF-003 (CHG-013) and TASK-002's two defect checks — and the first found in an ordinary test
+rather than in a fitness function. It has a row in `AGENT.md` now, stated generally: **an
+assertion that nothing matches is worth nothing without an assertion, over the same
+enumeration, that something known does.** It cost one mutation to find and would have survived
+every review that reads code rather than breaking it.
+
+**Both change entries are `proposed`, and that is the finding under *change scope*.** Every
+previous entry in the log was raised and accepted in the same breath by the same person. These
+two are decisions about the specification — where damage reports come from, and how precisely a
+damage location may be recorded — and the second one narrows what the product may ever store.
+The build could not proceed without deciding both; accepting them was not the agent's to do.
 
 ### TASK-004's checks, and the criterion that was corrected rather than coded around
 

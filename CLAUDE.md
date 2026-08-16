@@ -41,12 +41,26 @@ reader can still find. Two live examples are in *Known spec drift* below.
 **TASK-001 is Done** — accepted at review, with the author-is-reviewer conflict recorded in
 `review-log.md` rather than hidden (Q-026).
 
-**TASK-004 is Done.** Four of ten tasks built: sign-in, upload/parse/joined view, the ranked
-risk list, and the append-only decision record. **TASK-005 (dispatch board) is next.**
+**TASK-005 is Done.** Five of ten tasks built: sign-in, upload/parse/joined view, the ranked
+risk list, the append-only decision record, and the dispatch board. **TASK-006 (re-rank on a
+forecast change) is next.**
 
 **The gate is five commands, and the test suite is only one of them:**
-`pytest` (212) · `ruff` · `ci/fitness.py` (6 of 7 wired) · `ci/evals.py` (the quality floor) ·
+`pytest` (249) · `ruff` · `ci/fitness.py` (6 of 7 wired) · `ci/evals.py` (the quality floor) ·
 `playwright` (9, real Chromium against both processes).
+
+**A damage location is a neighbourhood and can be nothing else.** CON-003 forbids any
+premise-level record, so `damage_reports.location` is constrained by the schema to exactly
+`{"neighbourhood": …}` — an address, a meter id or a coordinate is refused by the database
+(CHG-017). Two consequences: "the same location" in AC-007 *means* the same neighbourhood, and
+REQ-NF-007's "aggregated in every log and export" holds by construction, because nothing finer
+is stored to leak. **Two reports at one location are one repair job**, enforced by
+`unique (scenario_id, location_key)` on `repair_jobs`, not by the code that looks first.
+
+**Two change entries are `proposed` and await a human decision** — the first that were not
+self-accepted: **CHG-016** (no endpoint created a damage report, so AC-007 could not occur) and
+**CHG-017** (`repair_jobs.location_key`, and the resolution of `damage_reports.location`). Both
+are built; neither is accepted.
 
 Seven change entries have been raised from implementation, all accepted: **CHG-008** (a
 `sessions` table), **CHG-009** (`GET /api/v1/auth/session`), **CHG-010** (FF-002 was a gate

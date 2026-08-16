@@ -13,6 +13,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { AssetPage, Ranking, Role, Scenario, scenarios } from '@/lib/api'
 
 import { AssetTable } from './AssetTable'
+import { DispatchBoard } from './DispatchBoard'
 import { RecommendationDecision } from './RecommendationDecision'
 import { RiskList } from './RiskList'
 import { ScenarioIntegrityNotice } from './ScenarioIntegrityNotice'
@@ -66,6 +67,11 @@ export function ScenarioView({ role }: { role: Role }) {
           <h2>Ranked by risk</h2>
           <RiskList ranking={ranking} state={state} />
           {ranking && <RecommendationDecision recommendationId={ranking.recommendation_id} />}
+
+          {/* The during-storm half of the same problem, and a separate list on purpose: risk
+              orders the planning list above, and nothing on the board is ordered by a score. */}
+          <h2>Damage and repair</h2>
+          <DispatchBoard scenarioId={scenarioId} />
 
           <h2>All assets</h2>
           <AssetTable page={page} state={state} />

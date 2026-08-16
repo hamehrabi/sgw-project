@@ -119,6 +119,65 @@ def risk_item(row) -> dict:
     }
 
 
+def damage_report_item(row) -> dict:
+    """One damage report, as the board and the filing response both show it.
+
+    **`asset_id` and never an asset location** (REQ-NF-007, STEST-009): the asset table stores
+    coordinates and this path must not carry them out. The report's own location is a
+    neighbourhood, because the store cannot hold anything finer (CON-003).
+    """
+    return {
+        "report_id": row["id"],
+        "asset_id": row["asset_id"],
+        "repair_job_id": row["repair_job_id"],
+        "location": json.loads(row["location"]),
+        "reported_at": row["reported_at"],
+        "reported_by": row["reported_by"],
+        "status": row["status"],
+    }
+
+
+def repair_job_item(job_row, reports: list[dict]) -> dict:
+    """One job and every report behind it.
+
+    Both halves of AC-007 are visible here: **one** job for the location, and **every** report
+    that arrived for it. An implementation that de-duplicated instead would satisfy the first
+    and lose the second — a second radio call about the same street with no record of it.
+
+    No rank, no score, no band. The job's location is its first report's, which is why
+    `repair_jobs` needs no display column of its own.
+    """
+    return {
+        "job_id": job_row["id"],
+        "status": job_row["status"],
+        "priority_rank": job_row["priority_rank"],
+        "assigned_to": job_row["assigned_to"],
+        "location": reports[0]["location"] if reports else {"neighbourhood": None},
+        "created_at": job_row["created_at"],
+        "updated_at": job_row["updated_at"],
+        "report_count": len(reports),
+        "reports": reports,
+    }
+
+
+def board_body(scenario_id: str, jobs, reports) -> dict:
+    """The shared board. Grouped in memory from two queries, never one query per job.
+
+    The empty state is an empty list with its counts stated — `no damage reported`, which the
+    screen must never render as `all clear`.
+    """
+    grouped: dict[str, list[dict]] = {}
+    for row in reports:
+        grouped.setdefault(row["repair_job_id"], []).append(damage_report_item(row))
+
+    return {
+        "scenario_id": scenario_id,
+        "items": [repair_job_item(job, grouped.get(job["id"], [])) for job in jobs],
+        "job_count": len(jobs),
+        "report_count": len(reports),
+    }
+
+
 def data_age_hours(forecast_issued_at: str, now: datetime | None = None) -> float | None:
     now = now or datetime.now(UTC)
     try:
