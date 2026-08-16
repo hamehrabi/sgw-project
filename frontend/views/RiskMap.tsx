@@ -119,7 +119,10 @@ export function RiskMap({ page, ranking }: { page: AssetPage; ranking: Ranking }
         </p>
       ) : (
         <>
-          <div ref={host} className="h-64 w-full" />
+          {/* `relative z-0` is load-bearing (CHG-060): Leaflet's internal panes carry
+              z-indexes in the hundreds, and without a stacking context here they paint
+              over the asset drawer. This contains them at the card's own level. */}
+          <div ref={host} className="relative z-0 h-64 w-full" />
           <div className="flex items-center gap-4 border-t border-line px-4 py-2.5 text-[12px] text-muted">
             <span className="flex items-center gap-1.5">
               <span className="h-2.5 w-2.5 rounded-full" style={{ background: DOT_FILL.High }} />

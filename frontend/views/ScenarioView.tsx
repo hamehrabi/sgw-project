@@ -46,9 +46,6 @@ import { DispatchSurface } from './DispatchSurface'
 import { FocusMode } from './FocusMode'
 import { ForecastRevisionControl } from './ForecastRevisionControl'
 import { Headline } from './Headline'
-import { MovementStrip } from './MovementStrip'
-import { PlacementForm } from './PlacementForm'
-import { RecommendationDecision } from './RecommendationDecision'
 import { RiskList } from './RiskList'
 import { RiskMap } from './RiskMap'
 import { ScenarioIntegrityNotice } from './ScenarioIntegrityNotice'
@@ -229,13 +226,11 @@ export function ScenarioView({
         <Headline ranking={ranking} movement={movement} />
       )}
 
-      {/* The answer first (CHG-057): who is most exposed right now, and why in one line. */}
+      {/* The answer first (CHG-057): who is most exposed right now, and why in one line.
+          Movement is not a section of its own any more (CHG-060) — it stays as the arrows
+          beside each rank and the headline's "moved up" sentence. */}
       {ranking && rankingState === 'ready' && (
         <TopRiskStrip ranking={ranking} onReview={setOpenAsset} />
-      )}
-
-      {ranking && rankingState === 'ready' && (
-        <MovementStrip movement={movement} ranking={ranking} onReview={setOpenAsset} />
       )}
 
       {/* Rendered from the scenario alone, deliberately not from the ranking: it is the
@@ -261,22 +256,10 @@ export function ScenarioView({
             onStartTriage={() => setTriaging(true)}
           />
 
-          {/* No ranking on screen, no decision offered against it, and no placement
-              either (BR-001): both are decisions about a list, taken while reading it.
-              Keyed by storm and revision, so switching starts a fresh form. */}
-          {ranking && rankingState === 'ready' && (
-            <>
-              <RecommendationDecision
-                key={`decision-${scenarioId}-${ranking.forecast_revision}`}
-                recommendationId={ranking.recommendation_id}
-              />
-              <PlacementForm
-                key={`placement-${scenarioId}-${ranking.forecast_revision}`}
-                scenarioId={scenarioId}
-                ranking={ranking}
-              />
-            </>
-          )}
+          {/* CHG-060: the whole-ranking decision form and the placement form are gone
+              from this screen at the client's instruction. The decision surface is
+              per-asset triage — the drawer and Focus Mode — and each action writes a
+              decision record naming the revision it was taken against. */}
 
           <section>
             <h2 className="mb-2 text-[15px] font-semibold">All assets</h2>

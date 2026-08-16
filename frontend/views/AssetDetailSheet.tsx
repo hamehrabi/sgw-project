@@ -24,6 +24,7 @@ import { Label, Textarea } from '@/components/ui/field'
 import { Sheet, SheetContent } from '@/components/ui/sheet'
 import { cn } from '@/lib/utils'
 import { AssetSummary, insights, RequestFailed, RiskItem } from '@/lib/api'
+import { isBlank, trimBlank } from '@/lib/blank'
 
 /** Confidence in words, derived from what the inputs actually are: an estimated or old
  *  condition reading weakens the claim, and the sentence says so instead of a number. */
@@ -59,7 +60,9 @@ export function AssetDetailSheet({
 
   async function record(action: 'Accept' | 'Adjust' | 'Dismiss') {
     if (!item) return
-    if ((action === 'Adjust' || action === 'Dismiss') && !note.trim()) {
+    // The shared alphabet, not String.prototype.trim() — the store's idea of blank is
+    // the only one (CHG-039), and this note is bound for decision_records.
+    if ((action === 'Adjust' || action === 'Dismiss') && isBlank(note)) {
       setNoteFor(action)
       setProblem(
         noteFor === action ? `A note is required to ${action.toLowerCase()} this rank.` : null,
@@ -74,11 +77,12 @@ export function AssetDetailSheet({
         item.asset_id,
         forecastRevision,
         action,
-        note.trim() || null,
+        trimBlank(note) || null,
       )
       setDone(
-        `Recorded: ${recorded.action} for ${recorded.asset_code} at ${recorded.occurred_at}. ` +
-          'Written to the decision record — no crew has been moved and the asset stays ranked.',
+        `Recorded: ${recorded.action} for ${recorded.asset_code} against forecast revision ` +
+          `${recorded.forecast_revision} at ${recorded.occurred_at}. Written to the decision ` +
+          'record — no crew has been moved and the asset stays ranked.',
       )
       setNote('')
       setNoteFor(null)

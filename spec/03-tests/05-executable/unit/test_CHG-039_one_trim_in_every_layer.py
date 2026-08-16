@@ -42,9 +42,15 @@ LINE_COMMENT = re.compile(r"^\s*(//|\*|/\*).*$", re.MULTILINE)
 def code(source: str) -> str:
     return LINE_COMMENT.sub("", source)
 
-# The two components CHG-039 changed: a crew label bound for `decision_records`, and a storm's
-# name and source note bound for the switcher REQ-F-010 is about.
-COVERED = ("views/PlacementForm.tsx", "views/ScenarioUploadPanel.tsx")
+# The components that send a person's words toward `decision_records` or the switcher.
+# `PlacementForm.tsx` was the original CHG-039 subject; CHG-060 removed it from the product,
+# and its role — a note bound for the append-only record — passed to the two triage surfaces,
+# so the rule follows the role rather than dying with the file.
+COVERED = (
+    "views/AssetDetailSheet.tsx",
+    "views/FocusMode.tsx",
+    "views/ScenarioUploadPanel.tsx",
+)
 
 
 @pytest.mark.parametrize("relative", COVERED)
@@ -54,8 +60,11 @@ def test_the_component_trims_with_the_shared_alphabet(relative):
     source = path.read_text(encoding="utf-8")
 
     # The haystack: this file has to be the component it claims to be before its silence about
-    # `.trim()` is worth reporting.
-    assert "async function" in source, f"{relative} sends nothing to the server"
+    # `.trim()` is worth reporting. `await insights.` / `await scenarios.` is the fact itself —
+    # a call leaving for the server — where "async function" was only its most common spelling,
+    # and FocusMode writes the same call as an arrow.
+    sends = r"await (insights|scenarios|dispatch|recommendations|placements|auth)\."
+    assert re.search(sends, source), f"{relative} sends nothing to the server"
     assert "from '@/lib/blank'" in source, (
         f"{relative} does not import the shared alphabet at all, so tying the alphabet to the "
         "store proves nothing about what this component sends"

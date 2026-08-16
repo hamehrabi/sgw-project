@@ -20,6 +20,7 @@ import { Progress } from '@/components/ui/bits'
 import { Button } from '@/components/ui/button'
 import { Label, Textarea } from '@/components/ui/field'
 import { insights, RequestFailed, Ranking, RiskItem } from '@/lib/api'
+import { isBlank, trimBlank } from '@/lib/blank'
 
 export function FocusMode({
   scenarioId,
@@ -60,7 +61,9 @@ export function FocusMode({
   const record = useCallback(
     async (action: 'Accept' | 'Adjust' | 'Dismiss') => {
       if (!item || saving) return
-      if ((action === 'Adjust' || action === 'Dismiss') && !note.trim()) {
+      // The shared alphabet, not String.prototype.trim() — the store's idea of blank is
+      // the only one (CHG-039), and this note is bound for decision_records.
+      if ((action === 'Adjust' || action === 'Dismiss') && isBlank(note)) {
         setNoteFor(action)
         return
       }
@@ -72,7 +75,7 @@ export function FocusMode({
           item.asset_id,
           ranking.forecast_revision,
           action,
-          note.trim() || null,
+          trimBlank(note) || null,
         )
         onRecorded()
         advance()

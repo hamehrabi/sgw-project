@@ -181,7 +181,8 @@ export function RiskList({
   onOpenAsset: (item: RiskItem) => void
   onStartTriage: () => void
 }) {
-  const [perPage, setPerPage] = useState<number>(100)
+  // 25 by default (CHG-060) — a screenful to read, expandable to 50 or 100.
+  const [perPage, setPerPage] = useState<number>(25)
   const [pageIndex, setPageIndex] = useState(0)
   const [reading, setReading] = useState<RiskItem | null>(null)
   const [working, setWorking] = useState<string | null>(null)

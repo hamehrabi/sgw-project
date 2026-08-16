@@ -149,16 +149,30 @@ test('the planning screen opens with the answer, pages the ranking, and maps the
   await expect(page.getByTestId('top-risk-card').first()).toBeVisible()
   await page.getByTestId('top-risk-card').first().getByRole('button', { name: 'Review' }).click()
   await expect(page.getByTestId('asset-sheet')).toBeVisible()
+
+  // CHG-060's stacking fix, held by pointer interception rather than a class name:
+  // whatever element is topmost at the drawer's centre must BE the drawer — Leaflet's
+  // panes carry z-indexes in the hundreds and used to paint over it.
+  const topmostIsDrawer = await page.evaluate(() => {
+    const sheet = document.querySelector('[data-testid="asset-sheet"]')
+    if (!sheet) return 'no-sheet'
+    const box = sheet.getBoundingClientRect()
+    const hit = document.elementFromPoint(box.left + box.width / 2, box.top + 40)
+    return sheet.contains(hit) ? 'drawer' : (hit?.className.toString() ?? 'nothing')
+  })
+  expect(topmostIsDrawer).toBe('drawer')
   await page.keyboard.press('Escape')
 
   // The forecast wall is one line now; the comparison waits behind its disclosure.
   await expect(page.getByTestId('forecast-history-toggle')).toBeVisible()
 
-  // Pagination (CHG-057): page context stated, size selectable, previous honest about
-  // there being nothing before page one.
+  // Pagination (CHG-057, CHG-060): 25 by default, expandable, page context stated,
+  // previous honest about there being nothing before page one.
   await expect(page.getByTestId('risk-pagination')).toContainText('ranked')
-  await page.getByTestId('per-page-25').click()
   await expect(page.getByTestId('per-page-25')).toHaveAttribute('aria-pressed', 'true')
+  await page.getByTestId('per-page-100').click()
+  await expect(page.getByTestId('per-page-100')).toHaveAttribute('aria-pressed', 'true')
+  await page.getByTestId('per-page-25').click()
   await expect(page.getByTestId('page-previous')).toBeDisabled()
 
   // The map (CHG-058): a real Leaflet pane and the mapped count — no key anywhere.

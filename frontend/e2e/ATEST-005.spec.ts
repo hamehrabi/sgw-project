@@ -98,8 +98,9 @@ test('a freshly loaded storm offers only the revision that has been ranked', asy
   await expectTheRankingIsReadable(page)
   const order = await orderOnScreen(page)
   expect(positionOf(order, ALPHA)).toBeLessThan(positionOf(order, BRAVO))
-  // Accept / change / reject is offered because the ranking it decides about is on screen.
-  await expect(page.getByTestId('decision-form')).toBeVisible()
+  // Triage is offered because the ranking it decides about is on screen (CHG-060: the
+  // whole-ranking decision form left this screen; the per-asset actions are the surface).
+  await expect(page.getByTestId('start-triage')).toBeVisible()
 })
 
 test('applying the change re-ranks the list, and the previous order is one button away', async ({
