@@ -8,7 +8,6 @@ audit trail.
 **It recommends; people decide.** The system never moves a crew, never closes a valve,
 and never sends a command anywhere. There is deliberately no code path that could.
 
-> Built as the technical prototype (Deliverable 3) for the **AECOM AI Solution
 > Engineer case study**: take an ambiguous business problem, make the assumptions
 > explicit, and turn it into a working AI-enabled solution — with the governance to
 > match. The full written specification the code was built from lives in [`spec/`](spec/),
