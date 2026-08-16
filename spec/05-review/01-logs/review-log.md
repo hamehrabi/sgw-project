@@ -29,7 +29,93 @@
 
 | 2026-08-16 | **TASK-006 remediation** — migration 011, the reordered `storm-with-a-forecast-change` fixture, `store/forecasts.py`, `api/views.py`, `lib/api.ts`, `ForecastRevisionControl.tsx`, `ScenarioView.tsx`, four executable test files, one new unit file and the first Playwright spec this task has had | TASK-006 / REQ-F-004, AC-005, ADR-002, BR-003, CHG-025…CHG-028 | The agent that fixed the Block — **not a reviewer, and this row is not an acceptance** (see the note under TASK-005's remediation rows, which applies unchanged) | Requirement fit · Architecture fit · Security & validation · Performance · Test evidence · Change scope | All three findings and all three observations closed, each with the mutation that now makes it red recorded in `TASK-006.md`. **The chronology now has a fixture where the right answer and the wrong one differ**: `weather.csv` lists its three forecast times 06:00, 12:00, 00:00, so file order, text order and chronological order are three different answers and a new unit file names all three — `enumerate(observed)` fails **17** tests and the plain text sort fails the UTC-offset case. **The restart case now compares the whole ranking rather than the order**, so the temp-table mutation that left all 25 cases green fails both restart tests. **Criterion 12 has a browser case**, and the defect behind it is fixed in the response rather than in the screen: `forecast_revisions[]` carries `ranked` (**CHG-027**), the control disables what has no order behind it, and `ScenarioView`'s three reads settle independently so one failed read is one failed panel. Migration **011** puts the other half of *never rewrites n* in the schema together with two further keys (**CHG-028**) — and the foreign key the review named was written, run and **withdrawn in writing**, because it makes 010's rollback destroy every stored ranking. PTEST-001 now measures the endpoint REQ-NF-001 names, and the backfill's dating is loud instead of silent. Suite **346 + 1 skipped over four runs**, `ruff`, `ci/fitness.py` (6 of 7), `ci/evals.py`, `tsc`, `lint`, `build` and all **17** Playwright specs pass. Two change entries raised and left **proposed**: **CHG-027** and **CHG-028**. | **Fixed — awaiting re-review** | Thirteen proposed entries now need a human decision; a re-review should start with the two invariants CHG-028 declines and with `scenarios.forecast_revision`, which can still point at a revision nothing ranked |
 
+| 2026-08-16 | **TASK-008 output, reviewed against its own done criteria** — migration 014 up and down (`damage_reports` rebuilt with `damage_reports_dismissal_is_attributed`; `damage_reports_dismissal_is_final`; `decision_records_dismiss_shape`), `store/dispatch.py`, `store/decisions.py`, `api/dismissals.py`, `api/views.py`, `views/DismissAlarmControl.tsx`, `DispatchBoard.tsx`, `lib/api.ts`, and the three executable files (UTEST-011's 44 cases, TASK-008-AC9, `e2e/TASK-008.spec.ts`) | TASK-008 / REQ-F-008, REQ-F-009, AC-008, ADR-002, ADR-004, CHG-033…CHG-035 | A later agent run, which **did not write TASK-008** — but author and reviewer are still the same process (**Q-026**, see the note below) | Requirement fit · Architecture fit · Security & validation · Test evidence · Change scope | **The full gate is green — `pytest` 499 + 1 skipped, `ruff`, `ci/fitness.py` (6 of 7, FF-006 at 7 of 7), `ci/evals.py`, `tsc`, `lint`, `build` and all 36 Playwright specs — and three of four directed checks failed, each confirmed by a mutation the gate did not notice.** **Criterion 7's *exactly one* row is service code, and that is this log's pre-declared Block condition:** `damage_reports_dismissal_is_final` refuses a *different* second dismissal and **accepts an identical one**, so with the endpoint's `409` branch and `dismiss_report`'s `status <> ?` guard removed a retrying client is answered `201` twice and **two `dismiss` audit rows exist for one human decision** — the failure `api/dismissals.py`'s own docstring says it prevents. No test issues an identical retry; both tests that go red under that mutation retry with different words. **`decision_records_dismiss_shape` has a clause no case violates:** deleting `and r.scenario_id = new.scenario_id` leaves **all 499 green**, and under that mutation a `dismiss` row naming storm A's report is accepted under storm B and served in storm B's `GET /decisions` while storm A's shows it too — the storm-blending bug CLAUDE.md calls a correctness failure, guarded by a clause nothing has ever read back. **REQ-NF-007's area figure is emitted at a second call site and asserted at neither:** replacing the dismissal log's `open_reports_in_area` with a whole-storm count leaves **all 499 green**; UTEST-012's three-way fixture proves the *filing* endpoint and stops at the module boundary. Two observations: CHG-035 states in writing that the report and its audit row *"can never disagree — neither can move afterwards"*, and a direct `update` moves a dismissed report's `location` and `repair_job_id` while the audit row keeps the old ones (CHG-034 says the narrowness is deliberate, so the two proposed entries contradict each other); and `DISMISSAL_REASON_MAX` has a **third** copy in `frontend/lib/api.ts` tied to nothing — set to 8, `tsc`, `lint`, `build` and all 36 browser specs stay green while the field silently truncates a dispatcher's sentence. **No finding requires a specification decision, so no change entry is raised** — CHG-033, CHG-034 and CHG-035 stand proposed, and two of the findings are evidence bearing on them. | **Block** | Put *one human decision, one audit row* in the store (a partial `unique` index on `decision_records (subject_id) where kind = 'dismiss'` needs no rebuild and touches neither append-only trigger); give the scenario clause a case of its own; give the dismissal's area figure the three-way assertion UTEST-012 already has; the twenty proposed entries still need a human decision |
+
 **Decision values:** Accept · Accept with follow-up · Revise · Reject · Block
+
+### The review of TASK-008 — four checks, three of them failed
+
+**Chosen before the code was read**, from the failure shapes `AGENT.md`'s lessons table already
+records, and deliberately **not** the twelve done criteria in the task file and **not** the twenty
+mutations its author had already run. Each was settled by a mutation: break the behaviour, run the
+part of the gate that claims to cover it, revert. **Every mutation in this section was applied,
+run, and reverted, and `git status --short` was empty after each one.**
+
+**The gate was run first and it is green.** `pytest -q` — 499 passed, 1 skipped. `ruff` clean over
+`backend`, `spec/03-tests/05-executable` and `ci`. `ci/fitness.py` passes 6 of 7 wired, FF-006 at
+7 of 7 and FF-004 refusing a real `UPDATE`. `ci/evals.py` holds the floor, 5 scorers × 2 cases.
+`tsc`, `lint`, `build` and all **36** Playwright specs pass, four of them TASK-008's own. A green
+gate is the start of a review and the four checks below are about the difference.
+
+| Check | Result |
+|---|---|
+| **A rule enforced in service code that the store could have refused** | **Failed, and this is the Block.** Done criterion 7 is *"**exactly one** `decision_records` row of kind `dismiss` is appended"*, and `api/dismissals.py` says why in its own comment: the `409` is *"decided **before** the write so a retrying client cannot produce two audit rows for one human decision."* The store holds half of it. `damage_reports_dismissal_is_final` fires `when old.status = 'dismissed'` and aborts only when `status`, `dismissed_by` or `dismissed_reason` **change** — so a *different* second dismissal is refused and an **identical** one is not: the `where` clause selects no row, the update succeeds, and `append_dismissal` writes a second audit row that `decision_records_dismiss_shape` then happily accepts, because it agrees with the report in every particular. Mutation: `if False and report["status"] == …` in the endpoint and `where id = ? and ? is not null` in `dismiss_report` — the two service-layer guards gone, nothing else touched. The identical retry answers **`201` twice** and the table holds **2** `dismiss` rows for one human decision. The suite notices only that the *conflict* path broke: **2** tests red, `test_a_second_dismissal_is_a_409_that_names_the_first` and the restart case, and **both retry with different words** (`"Mine now"`), which is the half the store does refuse. No test anywhere issues the same reason twice. This is the log's standing **Block** condition in its plainest form — *it works, it passes, and the first refactor silently removes it* — and the store can express it without the rebuild ADR-004 forbids: a partial `unique` index on `decision_records (subject_id) where kind = 'dismiss'` creates no table and drops no trigger (SQLite 3.49.1 here; partial indexes since 3.8.0). |
+| **A check that was never fed data without the condition it reports** | **Failed, on a clause rather than on a check.** `decision_records_dismiss_shape`'s second statement is a seven-way `exists`, and six of its clauses have a case that violates that clause and no other — the subject, the fact of the dismissal, the actor, the reason, the neighbourhood and the repair job. The seventh, **`and r.scenario_id = new.scenario_id`**, is violated by nothing. Mutation: delete it. **499 passed, 1 skipped.** Under that mutation a `dismiss` row naming a report in storm A is **accepted** with `scenario_id` set to storm B, and `GET /api/v1/scenarios/{B}/decisions` then serves a dismissal that happened in another storm — *"two storms blended into one ranking would look entirely plausible"*, which CLAUDE.md calls a correctness bug and which this clause is the only thing preventing. The clause is right; nothing has ever read it back. `AGENT.md`'s row says why that matters beyond coverage: *the clause you never ran is the clause whose function you assumed* — and this repository has already had one such clause turn out to be not merely unproven but **wrong** (CHG-023's `trim()`). |
+| **A figure that claims a resolution, at a call site nobody carried the lesson to** | **Failed.** REQ-NF-007 wants *an aggregate for that neighbourhood*, and `open_reports_in_area` now has **two** callers: `api/dispatch.py`, where UTEST-012's three-way fixture names all three answers (`3` for the area, `4` for the storm, `1` for the asset, with the wrong two asserted **absent**), and `api/dismissals.py`, added by this task, where nothing asserts the figure at all. Mutation: replace the dismissal's call with `select count(*) … where scenario_id = ? and status = 'open'` — the whole storm, the coarser wrong answer. **499 passed, 1 skipped.** `test_dismissing_sends_nobody_anywhere` reads that same log line and checks the event name, `outcome=recorded_not_dispatched` and the absence of the dispatcher's words; it says nothing about the number beside them. Mutating the shared function is red, because UTEST-012 covers it — mutating **this call site** is invisible, which is the distinction. Same shape as the `404`-that-names-which-refusal lesson: a discipline that is real in one module and stops at its boundary unless somebody carries it across. |
+| **A property asserted only within one process lifetime, when the decision says the state is durable** | **Held, and it is the strongest test in the task.** Done criterion 10 is *"the dismissal and its record survive a restart, and a second dismissal is still refused after one"*, and `test_the_dismissal_and_its_record_survive_a_restart` builds a second application over the same file with `conftest.build_application`, then asserts **the state the restart was supposed to protect** — the status, the actor and the reason on the report, the audit row and its payload — and not merely that the board renders one fewer item. Mutation: delete `connection.commit()` from `dismiss_report`, the one-line way to make durable state live inside one process (the same connection keeps reading its own open transaction; a second one sees nothing). **5** tests red, the restart case among them, failing exactly where it should — `At index 0 diff: 'open' != 'dismissed'`, after the restart. This is the second lessons row finally being applied at build time rather than at review time, which is what `AGENT.md` asks for: *when a task introduces durable state, the restart test is part of the task, not part of its review.* |
+
+**What held, and it is most of the task.** Both halves of REQ-F-008 through the endpoint; CHG-033's
+named check, with all six refused reasons — `''`, `'   '`, `char(9)||char(10)`, `' \r\v\f '`,
+`'  padded  '` and the over-length one — issued **directly against the database** and each paired
+with an acceptance differing in exactly one field; the two-argument `trim`, which is the clause
+CHG-023 proved the one-argument form gets wrong; the one-character reason accepted, because
+brevity is not the rule; the silent case for the check (an open or `duplicate` report needs
+neither column) and the silent case for CHG-034's trigger (a dismissed report's `reported_by` may
+still move, and an open report may still become `duplicate`); the bound read back out of
+`sqlite_master` with a haystack assertion in front of it; six of the seven clauses of the dismiss
+trigger, each refused by its own sentence rather than by an exception class; the atomicity case,
+failed at `append_dismissal` itself so the only window a half-done dismissal could exist in is the
+one under test; the `404` checked by its sentence; both roles allowed and STEST-001 carrying the
+row for the deny path; BR-001 in the log line and in the job that stays on the board reading
+*explained*; migration 014's round trip, with both append-only triggers proven still **refusing**
+by a real `UPDATE` and a real `DELETE` at every point of it, and the roll-forward aborting rather
+than inventing a reason for a dismissal the older shape had allowed to be blank; and four browser
+cases, including the one that presses a control the task drew itself and the one that proves
+clearing one call is not clearing the job.
+
+**Two observations, neither a finding.** **CHG-035 makes a claim the build does not hold.** It says
+of the report and its audit row that *"they must be equal when the row is written, and neither can
+move afterwards — the report because of CHG-034, the record because of BR-004."* The record cannot
+move; the report can. Issued directly against the database after a dismissal,
+`update damage_reports set location = json_object('neighbourhood','Saltmarsh')` and
+`update damage_reports set repair_job_id = null` are both **accepted**, and the audit row goes on
+saying `Northgate` and naming a job the report no longer belongs to — two of the three facts the
+payload copies. CHG-034 says the trigger's narrowness is deliberate and lists the three columns it
+freezes, so the two proposed entries disagree with each other about the same guarantee, and the
+human deciding them should see that rather than read the stronger sentence. It is not this log's
+Block condition: no code updates either column, and any code that did would turn the board's own
+location assertions red as collateral. And **`DISMISSAL_REASON_MAX` has three copies, not two.**
+The schema and `store/dispatch.py` are tied by `test_one_bound_governs_a_dismissal_reason`;
+`frontend/lib/api.ts` holds a third, described in its own comment as *"mirrored from
+`dispatch.DISMISSAL_REASON_MAX`"*, with nothing that fails when the mirror stops matching. Set to
+`8`, `tsc`, `lint`, `build` and all **36** browser specs pass while the field silently truncates
+every reason a dispatcher types to eight characters — a shorter reason than they meant, stored
+under their name. `AGENT.md`'s row names the shape: *a bound written in more than one place needs
+something that fails when the copies disagree*, and this repository has now paid for it twice
+(CHG-023, CHG-033) on the two copies that were tied.
+
+### Author and reviewer are the same process, for the ninth time — and this row must not be read as an independent one
+
+**Q-026, stated in the row rather than left to the signature.** This run did not write TASK-008,
+had not seen its code, and chose its four checks from `AGENT.md`'s lessons table before reading
+any of it. That is worth something, and the evidence is above: three of the four failed in work
+whose author had already run twenty mutations of their own and recorded every one. It is **not**
+independence. It is the same model, under the same account, following instructions from the same
+person, with **no human between the work and its judgement**. No real people exist for this
+prototype; one person holds every decision-owner role, and Q-026 records that as a deferral rather
+than resolving it with invented names. A later invocation of one process is not a second pair of
+eyes, and the *Reviewer* column above must not be read as one.
+
+**Two things are worth noticing about this particular round.** The first is that the check which
+**held** is the one the last three reviews each found broken — the restart case. `AGENT.md`'s
+instruction to build the restart test *into* the task rather than leave it to review was followed,
+and it works: the one-line mutation that would have passed every earlier task's suite fails five
+tests here. The second is that all three failures are the same lesson at a boundary. *One human
+decision, one audit row* is real in `api/dismissals.py` and absent from the store; the seven-way
+clause discipline is real for six clauses and absent for the seventh; the three-way area figure is
+real in `api/dispatch.py` and absent one module over. Nothing here is careless. A rule that has to
+be re-derived at each boundary is a rule that will be missed at one, which is the sentence this
+log already wrote about the restart test and is now writing about three more things.
 
 ### The remediation of the TASK-006 Block — what was fixed, and the two places the review's own remedy was not taken
 
