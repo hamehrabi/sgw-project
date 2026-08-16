@@ -71,6 +71,9 @@ export function ForecastRevisionControl({
     }
   }
 
+  // Forecasts the storm carries that nobody has applied. Real, and not comparable yet.
+  const pending = scenario.forecast_revisions.filter((entry) => !entry.ranked)
+
   return (
     <section className="revisions" data-testid="forecast-revisions">
       <div>
@@ -105,6 +108,33 @@ export function ForecastRevisionControl({
         </p>
       )}
 
+      {/* **Only the orders that exist are offered.**
+       *
+       * Every revision the prepared file carries used to be a row here, each unranked one
+       * repeating the same sentence. A storm with 48 forecasts drew 48 rows and 45 of them
+       * said *not applied yet* — a wall that buried the two or three orders a person can
+       * actually compare, on the screen they came to compare them on.
+       *
+       * The unapplied ones are still stated, because CHG-027's point stands: a forecast that
+       * is coming is a real fact and hiding it would misrepresent the storm. They are stated
+       * **as a count**, which is the same fact at the size it deserves. */}
+      {pending.length > 0 && (
+        <p className="revisions__lede" data-testid="revisions-pending">
+          {pending.length} of this storm&rsquo;s {scenario.forecast_revisions.length} forecasts
+          have not been applied. They are listed because the weather moves again; each becomes
+          comparable only once it has an order behind it.
+        </p>
+      )}
+
+      {/* **Every revision the file carries stays on screen** — CHG-027's decision, and the
+        * reason is in ATEST-005: an operator wants to know the weather moves again, and only
+        * the revision with an order behind it can be selected.
+        *
+        * What changed is the shape, not the content. Each was a block of full sentences, so a
+        * storm carrying 48 forecasts drew 48 of them and buried the two or three orders a
+        * person can actually compare — on the screen they came to compare them on. They are
+        * chips now, wrapped, with the explanation stated once above and kept per-revision for
+        * anyone reading one on its own. */}
       <ul className="revisions__list">
         {scenario.forecast_revisions.map((entry) => (
           <li key={entry.forecast_revision}>
@@ -116,21 +146,24 @@ export function ForecastRevisionControl({
               // that does not exist yet.
               disabled={!entry.ranked}
               aria-current={entry.forecast_revision === viewing}
+              title={`forecast for ${entry.valid_time}`}
+              className={
+                entry.forecast_revision === viewing
+                  ? 'revisions__chip is-viewing'
+                  : 'revisions__chip'
+              }
               data-testid={`view-revision-${entry.forecast_revision}`}
             >
-              Revision {entry.forecast_revision}
-            </button>{' '}
-            <span className="revisions__time">forecast for {entry.valid_time}</span>
-            {entry.forecast_revision === scenario.forecast_revision && (
-              <span className="badge"> current</span>
-            )}
+              Rev {entry.forecast_revision}
+              {entry.forecast_revision === scenario.forecast_revision && ' · current'}
+            </button>
+            <span className="revisions__time">{entry.valid_time}</span>
             {!entry.ranked && (
               <span
                 className="revisions__pending"
                 data-testid={`revision-not-applied-${entry.forecast_revision}`}
               >
-                {' '}
-                — not applied yet, so there is no order to compare
+                no order to compare
               </span>
             )}
           </li>

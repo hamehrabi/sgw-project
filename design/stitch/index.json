@@ -1,0 +1,74 @@
+[
+  {
+    "title": "4. Storm Planning Tab",
+    "id": "312649a410624685832f8213cdc4e506",
+    "slug": "4-storm-planning-tab",
+    "size": "2560x2048",
+    "device": "DESKTOP",
+    "html": "design\\stitch\\4-storm-planning-tab.html",
+    "png": "design\\stitch\\4-storm-planning-tab.png"
+  },
+  {
+    "title": "2. Load Storm Data - Files Dropped",
+    "id": "98df2b7837134566b2ab2e34dba5c182",
+    "slug": "2-load-storm-data-files-dropped",
+    "size": "2560x2048",
+    "device": "DESKTOP",
+    "html": "design\\stitch\\2-load-storm-data-files-dropped.html",
+    "png": "design\\stitch\\2-load-storm-data-files-dropped.png"
+  },
+  {
+    "title": "3. Review Asset Matches Drawer",
+    "id": "65501792633647a2a1baf9c3b568b583",
+    "slug": "3-review-asset-matches-drawer",
+    "size": "2560x2048",
+    "device": "DESKTOP",
+    "html": "design\\stitch\\3-review-asset-matches-drawer.html",
+    "png": "design\\stitch\\3-review-asset-matches-drawer.png"
+  },
+  {
+    "title": "1. Load Storm Data - Empty State",
+    "id": "a235114cd00a460884f59ea2ed033054",
+    "slug": "1-load-storm-data-empty-state",
+    "size": "2560x2048",
+    "device": "DESKTOP",
+    "html": "design\\stitch\\1-load-storm-data-empty-state.html",
+    "png": "design\\stitch\\1-load-storm-data-empty-state.png"
+  },
+  {
+    "title": "8. Summary Review Drawer",
+    "id": "560028f546784cacbe58c00c86437609",
+    "slug": "8-summary-review-drawer",
+    "size": "2560x2048",
+    "device": "DESKTOP",
+    "html": "design\\stitch\\8-summary-review-drawer.html",
+    "png": "design\\stitch\\8-summary-review-drawer.png"
+  },
+  {
+    "title": "5. Asset Detail Drawer",
+    "id": "a96049631f704d92a1d3b6635f3f1aec",
+    "slug": "5-asset-detail-drawer",
+    "size": "2560x2048",
+    "device": "DESKTOP",
+    "html": "design\\stitch\\5-asset-detail-drawer.html",
+    "png": "design\\stitch\\5-asset-detail-drawer.png"
+  },
+  {
+    "title": "7. Dispatch Board Tab",
+    "id": "92498a1fb7684055bc568e67d10fba4b",
+    "slug": "7-dispatch-board-tab",
+    "size": "2560x2048",
+    "device": "DESKTOP",
+    "html": "design\\stitch\\7-dispatch-board-tab.html",
+    "png": "design\\stitch\\7-dispatch-board-tab.png"
+  },
+  {
+    "title": "6. Focus Mode Overlay",
+    "id": "711317c003b34b74a221fe3df860cede",
+    "slug": "6-focus-mode-overlay",
+    "size": "2560x2048",
+    "device": "DESKTOP",
+    "html": "design\\stitch\\6-focus-mode-overlay.html",
+    "png": "design\\stitch\\6-focus-mode-overlay.png"
+  }
+]

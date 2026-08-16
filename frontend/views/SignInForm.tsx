@@ -42,7 +42,11 @@ export function SignInForm({ onSignedIn }: { onSignedIn: (identity: Identity) =>
   }
 
   return (
-    <form onSubmit={submit} className="sign-in">
+    <form onSubmit={submit} className="sign-in" data-testid="sign-in-form">
+      <p className="sign-in__lede">
+        Sign in to load a storm, read the ranking, and record what you decide.
+      </p>
+
       <label htmlFor="email">Email</label>
       <input
         id="email"
@@ -74,6 +78,15 @@ export function SignInForm({ onSignedIn }: { onSignedIn: (identity: Identity) =>
       <button type="submit" disabled={submitting}>
         {submitting ? 'Signing in…' : 'Sign in'}
       </button>
+
+      {/* Said out loud rather than left as three absent links a person hunts for. Each is
+          absent by a recorded decision: accounts are created on the host
+          (`security-specification.md` §7), a reset is admin-performed (CHG-004), and a second
+          factor is P1 rather than version one (SEC-A-006). */}
+      <p className="sign-in__note">
+        Accounts are created by an administrator — there is no sign-up, and no self-service
+        password reset. If you cannot get in, ask an administrator to set a temporary password.
+      </p>
     </form>
   )
 }

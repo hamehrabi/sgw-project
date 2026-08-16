@@ -309,3 +309,50 @@ body {
 /* The revision on screen is named in words as well as marked — never colour alone. */
 .revisions__list button[aria-current='true'] { font-weight: 700; text-decoration: underline; }
 .revisions__time { color: var(--muted); font-variant-numeric: tabular-nums; }
+
+/* --- The sign-in page ------------------------------------------------------------------
+   TASK-001 scoped styling to "whatever makes the shell legible", which left this as three
+   bare fields on white. It is the first thing anyone sees, so it is worth the card. */
+
+.shell--centred {
+  max-width: 26rem;
+  margin: 6vh auto;
+  padding: 0 1rem;
+}
+
+.shell--centred h1 {
+  font-size: 1.45rem;
+  line-height: 1.3;
+  margin: 0 0 0.25rem;
+}
+
+.sign-in {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 1.5rem;
+  background: var(--page);
+  box-shadow: 0 1px 3px rgb(20 24 29 / 6%), 0 8px 24px rgb(20 24 29 / 4%);
+}
+
+.sign-in__lede { color: var(--muted); margin: 0 0 1.1rem; }
+.sign-in label { display: block; font-weight: 600; font-size: 0.92rem; margin-bottom: 0.2rem; }
+.sign-in input { width: 100%; margin-bottom: 0.9rem; padding: 0.6rem 0.7rem; }
+.sign-in input:focus-visible { outline: 2px solid #2f5bd1; outline-offset: 1px; border-color: #2f5bd1; }
+.sign-in button { width: 100%; margin-top: 0.2rem; padding: 0.65rem; font-weight: 600; border-radius: 5px; border: 1px solid #14181d; background: #14181d; color: #fff; }
+.sign-in button:disabled { opacity: 0.6; cursor: default; }
+
+/* Colour is never the only signal — the sentence says what happened (Q-013). */
+.sign-in__refusal { color: var(--refusal); border-left: 3px solid var(--refusal); padding-left: 0.6rem; margin: 0 0 0.8rem; }
+.sign-in__note { color: var(--muted); font-size: 0.86rem; margin: 1.1rem 0 0; padding-top: 0.9rem; border-top: 1px solid var(--line); }
+
+
+/* --- Forecast revisions: chips, not a wall of sentences ------------------------------- */
+.revisions__lede { color: var(--muted); font-size: 0.88rem; margin: 0.5rem 0 0.1rem; }
+.revisions__list { list-style: none; display: flex; flex-wrap: wrap; gap: 0.3rem 0.55rem; padding: 0; margin: 0.5rem 0 0.2rem; }
+.revisions__list li { display: inline-flex; align-items: baseline; gap: 0.25rem; border: 1px solid var(--line); border-radius: 999px; padding: 0.1rem 0.55rem; background: #fbfbfc; }
+.revisions__chip { border: 0; background: none; padding: 0; font: inherit; font-size: 0.85rem; cursor: pointer; color: #14181d; }
+.revisions__chip:disabled { color: var(--muted); cursor: default; }
+.revisions__list li:has(.revisions__chip.is-viewing) { border-color: #14181d; background: #fff; }
+.revisions__chip.is-viewing { font-weight: 600; }
+.revisions__time { color: var(--muted); font-size: 0.72rem; }
+.revisions__pending { color: var(--muted); font-size: 0.72rem; font-style: italic; }

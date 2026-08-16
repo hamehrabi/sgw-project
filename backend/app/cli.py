@@ -16,6 +16,7 @@ import sqlite3
 import sys
 
 from app.config import ConfigError, load_config
+from app.envfile import load_env_file
 from app.store import db, migrate, users
 
 ROLES = ("admin", "user")
@@ -83,6 +84,9 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main(argv: list[str] | None = None) -> int:
     arguments = build_parser().parse_args(argv)
+    # An entry point, so it may read the file (see app/envfile.py for why library code
+    # must not). A real environment variable still wins.
+    load_env_file()
     try:
         return arguments.handler(arguments)
     except ConfigError as error:

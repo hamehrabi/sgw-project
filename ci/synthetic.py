@@ -32,7 +32,12 @@ TODAY = date(2026, 8, 15)
 def synthetic_scenario(
     *, assets: int = 220, forecast_rows: int = 5000, maintenance_rows: int = 2000,
     outage_rows: int = 300, seed: int = 7,
+    storm_name: str | None = None, scenario_id: str | None = None,
+    issued_at: str | None = None,
 ) -> dict[str, bytes]:
+    # The three naming arguments default to the fixed values the test suite and the eval
+    # harness already depend on, so generating a storm for a person to look at cannot change
+    # what PTEST-001 measures or what EVAL-001 scores.
     rng = random.Random(seed)
     cells = [f"GC-{index:03d}" for index in range(1, 41)]
 
@@ -113,9 +118,9 @@ def synthetic_scenario(
         + "\n".join(outages) + "\n",
     }
     manifest = {
-        "scenario_id": "STORM-SYNTHETIC-DEMO-SCALE",
-        "storm_name": "Synthetic storm at demo scale",
-        "forecast_issued_at": ISSUED_AT,
+        "scenario_id": scenario_id or "STORM-SYNTHETIC-DEMO-SCALE",
+        "storm_name": storm_name or "Synthetic storm at demo scale",
+        "forecast_issued_at": issued_at or ISSUED_AT,
         "files": sorted(files),
         "row_counts": {
             name: len([line for line in text.strip().split("\n")[1:] if line])
@@ -125,3 +130,83 @@ def synthetic_scenario(
     }
     return {"manifest.json": json.dumps(manifest, indent=2).encode(),
             **{name: text.encode() for name, text in files.items()}}
+
+
+# --- Writing a storm out, so a person can upload one -----------------------------------------
+#
+#     python ci/synthetic.py --out scenarios/big-storm --assets 220 --fresh
+#
+# Produces the five files a prepared scenario is: manifest.json plus four CSVs (Q-017). Drag
+# them into the upload panel exactly as they are.
+#
+# `--fresh` stamps the forecast as issued an hour ago. Without it the storm carries the fixed
+# 2026-08-15 date the tests rely on, and every screen will correctly report it as stale — which
+# is right for a test and confusing for a demonstration.
+
+
+def _write(directory, files: dict[str, bytes]) -> None:
+    directory.mkdir(parents=True, exist_ok=True)
+    for name, content in files.items():
+        (directory / name).write_bytes(content)
+
+
+def main(argv=None) -> int:
+    import argparse
+    from datetime import UTC, datetime, timedelta
+    from pathlib import Path
+
+    parser = argparse.ArgumentParser(
+        description="Write a prepared storm scenario you can upload to the app."
+    )
+    parser.add_argument("--out", required=True, help="directory to write the five files into")
+    parser.add_argument("--assets", type=int, default=220, help="how many assets (default 220)")
+    parser.add_argument("--forecast-rows", type=int, default=5000)
+    parser.add_argument("--maintenance-rows", type=int, default=2000)
+    parser.add_argument("--outage-rows", type=int, default=300)
+    parser.add_argument(
+        "--seed", type=int, default=7,
+        help="same seed, same storm, byte for byte. Change it for a different one.",
+    )
+    parser.add_argument("--name", default=None, help="the storm's name, as a person reads it")
+    parser.add_argument(
+        "--hours-old", type=float, default=None,
+        help="how old the forecast is. Under 6 renders fresh; over 6 trips the staleness banner.",
+    )
+    parser.add_argument(
+        "--fresh", action="store_true", help="shorthand for --hours-old 1",
+    )
+    arguments = parser.parse_args(argv)
+
+    issued_at = None
+    hours = 1.0 if arguments.fresh and arguments.hours_old is None else arguments.hours_old
+    if hours is not None:
+        stamp = datetime.now(UTC) - timedelta(hours=hours)
+        issued_at = stamp.isoformat().replace("+00:00", "Z")
+
+    files = synthetic_scenario(
+        assets=arguments.assets,
+        forecast_rows=arguments.forecast_rows,
+        maintenance_rows=arguments.maintenance_rows,
+        outage_rows=arguments.outage_rows,
+        seed=arguments.seed,
+        storm_name=arguments.name,
+        scenario_id=f"STORM-GENERATED-{arguments.seed}" if arguments.name else None,
+        issued_at=issued_at,
+    )
+
+    directory = Path(arguments.out)
+    _write(directory, files)
+
+    total = sum(len(content) for content in files.values())
+    print(f"Wrote {len(files)} files to {directory.resolve()}")
+    for name in sorted(files):
+        rows = len(files[name].decode().strip().split("\n")) - 1
+        suffix = f"  {rows:>6,} rows" if name.endswith(".csv") else ""
+        print(f"  {name:<18} {len(files[name]):>8,} bytes{suffix}")
+    print(f"  {'total':<18} {total:>8,} bytes   (the limit is 10 MB per scenario)")
+    print("\nUpload all five together. They carry all seven known data defects on purpose.")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

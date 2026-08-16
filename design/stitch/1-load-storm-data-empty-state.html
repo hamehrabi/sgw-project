@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+
+<html class="light" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>SGW Resilience Platform - Load Storm Data</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                            "on-primary-fixed-variant": "#3f465c",
+                            "primary-container": "#131b2e",
+                            "primary": "#000000",
+                            "surface-tint": "#565e74",
+                            "on-tertiary-fixed": "#271901",
+                            "secondary-container": "#96eef9",
+                            "surface-container-highest": "#e0e3e5",
+                            "surface-bright": "#f7f9fb",
+                            "tertiary": "#000000",
+                            "surface-container-lowest": "#ffffff",
+                            "surface": "#f7f9fb",
+                            "tertiary-fixed": "#fcdeb5",
+                            "on-error": "#ffffff",
+                            "outline-variant": "#c6c6cd",
+                            "secondary-fixed": "#98f0fb",
+                            "surface-container": "#eceef0",
+                            "on-primary-fixed": "#131b2e",
+                            "tertiary-container": "#271901",
+                            "primary-fixed-dim": "#bec6e0",
+                            "surface-dim": "#d8dadc",
+                            "tertiary-fixed-dim": "#dec29a",
+                            "on-secondary-fixed": "#001f23",
+                            "on-surface-variant": "#45464d",
+                            "on-tertiary": "#ffffff",
+                            "inverse-primary": "#bec6e0",
+                            "inverse-on-surface": "#eff1f3",
+                            "on-secondary": "#ffffff",
+                            "outline": "#76777d",
+                            "on-primary-container": "#7c839b",
+                            "on-background": "#191c1e",
+                            "surface-container-high": "#e6e8ea",
+                            "error-container": "#ffdad6",
+                            "secondary": "#006972",
+                            "on-error-container": "#93000a",
+                            "background": "#f7f9fb",
+                            "on-secondary-fixed-variant": "#004f56",
+                            "error": "#ba1a1a",
+                            "on-secondary-container": "#006d77",
+                            "on-tertiary-fixed-variant": "#574425",
+                            "on-primary": "#ffffff",
+                            "surface-variant": "#e0e3e5",
+                            "on-tertiary-container": "#98805d",
+                            "primary-fixed": "#dae2fd",
+                            "inverse-surface": "#2d3133",
+                            "secondary-fixed-dim": "#7cd4df",
+                            "on-surface": "#191c1e",
+                            "surface-container-low": "#f2f4f6"
+                    },
+                    "borderRadius": {
+                            "DEFAULT": "0.25rem",
+                            "lg": "0.5rem",
+                            "xl": "0.75rem",
+                            "full": "9999px"
+                    },
+                    "spacing": {
+                            "rail-width": "240px",
+                            "component-gap": "0.5rem",
+                            "margin-page": "2rem",
+                            "gutter": "1.5rem",
+                            "container-max": "1440px"
+                    },
+                    "fontFamily": {
+                            "body-table": ["Inter"],
+                            "mono-data": ["Inter"],
+                            "headline-md": ["Inter"],
+                            "body-base": ["Inter"],
+                            "headline-lg": ["Inter"],
+                            "label-sm": ["Inter"]
+                    },
+                    "fontSize": {
+                            "body-table": ["13px", {"lineHeight": "18px", "fontWeight": "400"}],
+                            "mono-data": ["13px", {"lineHeight": "18px", "fontWeight": "500"}],
+                            "headline-md": ["18px", {"lineHeight": "28px", "letterSpacing": "-0.01em", "fontWeight": "600"}],
+                            "body-base": ["14px", {"lineHeight": "20px", "fontWeight": "400"}],
+                            "headline-lg": ["24px", {"lineHeight": "32px", "letterSpacing": "-0.02em", "fontWeight": "600"}],
+                            "label-sm": ["12px", {"lineHeight": "16px", "letterSpacing": "0.02em", "fontWeight": "500"}]
+                    }
+                }
+            }
+        }
+    </script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<style>
+        body { font-family: 'Inter', sans-serif; }
+    </style>
+</head>
+<body class="bg-surface text-on-surface flex h-screen overflow-hidden antialiased">
+<!-- SideNavBar -->
+<nav class="bg-surface-container-low text-secondary font-body-table docked w-rail-width h-screen left-0 border-r border-outline-variant transition-all duration-200 fixed top-0 flex flex-col py-margin-page hidden md:flex z-20">
+<div class="px-gutter mb-8">
+<h1 class="text-headline-lg font-headline-lg text-primary">Scenario: Hurricane Delia</h1>
+<p class="text-on-surface-variant mt-1 text-label-sm">historical replay</p>
+</div>
+<ul class="flex-1 px-4 space-y-2">
+<li>
+<a class="flex items-center gap-3 px-3 py-2 rounded-lg border-l-2 border-secondary bg-surface-container-high text-secondary font-bold hover:bg-surface-container-highest transition-colors duration-200" href="#">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 0;">storm</span>
+                    Storm Planning
+                </a>
+</li>
+<li>
+<a class="flex items-center gap-3 px-3 py-2 rounded-lg text-on-surface-variant hover:bg-surface-container hover:bg-surface-container-highest transition-colors duration-200" href="#">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 0;">dashboard</span>
+                    Dispatch Board
+                </a>
+</li>
+</ul>
+</nav>
+<!-- Main Content Area -->
+<div class="flex-1 flex flex-col ml-0 md:ml-[240px] h-screen overflow-hidden relative z-10">
+<!-- TopNavBar -->
+<header class="bg-surface-container-lowest text-primary font-body-base docked full-width top-0 border-b border-outline-variant flex justify-between items-center h-14 px-gutter w-full transition-colors duration-200 shrink-0 z-20">
+<div class="flex items-center gap-4">
+<span class="text-headline-md font-headline-md text-on-surface">SGW Resilience Platform</span>
+</div>
+<div class="flex items-center gap-6">
+<span class="text-on-surface-variant hidden lg:inline-block">4 files loaded · no live system connections</span>
+<span class="text-primary font-medium hidden sm:inline-block">Forecast updated 14:20</span>
+<!-- Mobile Menu Button (placeholder) -->
+<button class="md:hidden p-2 text-on-surface-variant hover:bg-surface-container rounded-lg">
+<span class="material-symbols-outlined">menu</span>
+</button>
+</div>
+</header>
+<!-- Canvas (Main Content) -->
+<main class="flex-1 overflow-y-auto p-4 md:p-gutter lg:p-[32px] xl:p-[48px] flex justify-center items-start bg-background">
+<!-- Load Storm Data Panel -->
+<div class="w-full max-w-container-max bg-surface-container-lowest border border-outline-variant rounded-lg flex flex-col h-full md:h-auto min-h-[500px]">
+<!-- Panel Header -->
+<div class="p-6 border-b border-outline-variant flex justify-between items-center">
+<div>
+<h2 class="text-headline-md font-headline-md text-primary">Load Storm Data</h2>
+<p class="text-body-base font-body-base text-on-surface-variant mt-1">Upload necessary files to configure the storm scenario.</p>
+</div>
+</div>
+<!-- Empty State Content -->
+<div class="flex-1 flex flex-col items-center justify-center p-8 lg:p-12">
+<div class="w-full max-w-2xl border-2 border-dashed border-outline-variant rounded-lg p-12 flex flex-col items-center justify-center text-center bg-surface-container-low hover:bg-surface-container transition-colors duration-200 cursor-pointer group">
+<div class="w-16 h-16 rounded-full bg-primary-fixed-dim flex items-center justify-center mb-6 text-on-primary-fixed-variant group-hover:scale-110 transition-transform duration-300">
+<span class="material-symbols-outlined text-3xl">upload_file</span>
+</div>
+<h3 class="text-headline-md font-headline-md text-primary mb-2">Drop your asset, maintenance, weather and outage files here</h3>
+<p class="text-body-base font-body-base text-on-surface-variant mb-6 max-w-md mx-auto">
+                            CSV, XLSX or GeoJSON. Nothing is sent to SGW's live systems.
+                        </p>
+<button class="px-6 py-2 border border-outline-variant text-primary rounded-md font-medium hover:bg-surface-container-highest transition-colors duration-200 flex items-center gap-2">
+                            Browse files
+                        </button>
+</div>
+</div>
+<!-- Panel Footer -->
+<div class="p-6 border-t border-outline-variant flex flex-col sm:flex-row justify-between items-center gap-4 bg-surface-container-low rounded-b-lg">
+<button class="text-secondary font-medium hover:underline hover:text-on-secondary-container transition-colors duration-200 text-body-base font-body-base px-4 py-2">
+                        Use sample storm data
+                    </button>
+<div class="flex items-center gap-4">
+<span class="text-label-sm font-label-sm text-error">An asset file is required</span>
+<button class="px-6 py-2 bg-surface-variant text-outline cursor-not-allowed rounded-md font-medium transition-colors duration-200" disabled="">
+                            Load scenario
+                        </button>
+</div>
+</div>
+</div>
+</main>
+</div>
+</body></html>

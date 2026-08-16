@@ -47,3 +47,6 @@ Thumbs.db
 frontend/test-results/
 frontend/playwright-report/
 .gstack/
+
+# --- generated storm scenarios: reproducible from a seed, not worth versioning ---
+scenarios/

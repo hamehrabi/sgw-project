@@ -1,0 +1,331 @@
+<!DOCTYPE html>
+
+<html class="light" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Asset Detail Drawer - Bayside Substation</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            "colors": {
+                    "on-primary-fixed-variant": "#3f465c",
+                    "primary-container": "#131b2e",
+                    "primary": "#000000",
+                    "surface-tint": "#565e74",
+                    "on-tertiary-fixed": "#271901",
+                    "secondary-container": "#96eef9",
+                    "surface-container-highest": "#e0e3e5",
+                    "surface-bright": "#f7f9fb",
+                    "tertiary": "#000000",
+                    "surface-container-lowest": "#ffffff",
+                    "surface": "#f7f9fb",
+                    "tertiary-fixed": "#fcdeb5",
+                    "on-error": "#ffffff",
+                    "outline-variant": "#c6c6cd",
+                    "secondary-fixed": "#98f0fb",
+                    "surface-container": "#eceef0",
+                    "on-primary-fixed": "#131b2e",
+                    "tertiary-container": "#271901",
+                    "primary-fixed-dim": "#bec6e0",
+                    "surface-dim": "#d8dadc",
+                    "tertiary-fixed-dim": "#dec29a",
+                    "on-secondary-fixed": "#001f23",
+                    "on-surface-variant": "#45464d",
+                    "on-tertiary": "#ffffff",
+                    "inverse-primary": "#bec6e0",
+                    "inverse-on-surface": "#eff1f3",
+                    "on-secondary": "#ffffff",
+                    "outline": "#76777d",
+                    "on-primary-container": "#7c839b",
+                    "on-background": "#191c1e",
+                    "surface-container-high": "#e6e8ea",
+                    "error-container": "#ffdad6",
+                    "secondary": "#006972",
+                    "on-error-container": "#93000a",
+                    "background": "#f7f9fb",
+                    "on-secondary-fixed-variant": "#004f56",
+                    "error": "#ba1a1a",
+                    "on-secondary-container": "#006d77",
+                    "on-tertiary-fixed-variant": "#574425",
+                    "on-primary": "#ffffff",
+                    "surface-variant": "#e0e3e5",
+                    "on-tertiary-container": "#98805d",
+                    "primary-fixed": "#dae2fd",
+                    "inverse-surface": "#2d3133",
+                    "secondary-fixed-dim": "#7cd4df",
+                    "on-surface": "#191c1e",
+                    "surface-container-low": "#f2f4f6"
+            },
+            "borderRadius": {
+                    "DEFAULT": "0.25rem",
+                    "lg": "0.5rem",
+                    "xl": "0.75rem",
+                    "full": "9999px"
+            },
+            "spacing": {
+                    "rail-width": "240px",
+                    "component-gap": "0.5rem",
+                    "margin-page": "2rem",
+                    "gutter": "1.5rem",
+                    "container-max": "1440px"
+            },
+            "fontFamily": {
+                    "body-table": [
+                            "Inter"
+                    ],
+                    "mono-data": [
+                            "Inter"
+                    ],
+                    "headline-md": [
+                            "Inter"
+                    ],
+                    "body-base": [
+                            "Inter"
+                    ],
+                    "headline-lg": [
+                            "Inter"
+                    ],
+                    "label-sm": [
+                            "Inter"
+                    ]
+            },
+            "fontSize": {
+                    "body-table": [
+                            "13px",
+                            {
+                                    "lineHeight": "18px",
+                                    "fontWeight": "400"
+                            }
+                    ],
+                    "mono-data": [
+                            "13px",
+                            {
+                                    "lineHeight": "18px",
+                                    "fontWeight": "500"
+                            }
+                    ],
+                    "headline-md": [
+                            "18px",
+                            {
+                                    "lineHeight": "28px",
+                                    "letterSpacing": "-0.01em",
+                                    "fontWeight": "600"
+                            }
+                    ],
+                    "body-base": [
+                            "14px",
+                            {
+                                    "lineHeight": "20px",
+                                    "fontWeight": "400"
+                            }
+                    ],
+                    "headline-lg": [
+                            "24px",
+                            {
+                                    "lineHeight": "32px",
+                                    "letterSpacing": "-0.02em",
+                                    "fontWeight": "600"
+                            }
+                    ],
+                    "label-sm": [
+                            "12px",
+                            {
+                                    "lineHeight": "16px",
+                                    "letterSpacing": "0.02em",
+                                    "fontWeight": "500"
+                            }
+                    ]
+            }
+        },
+        },
+      }
+    </script>
+<style type="text/tailwindcss">
+        @layer utilities {
+            .scrollbar-hide::-webkit-scrollbar {
+                display: none;
+            }
+            .scrollbar-hide {
+                -ms-overflow-style: none;
+                scrollbar-width: none;
+            }
+        }
+    </style>
+</head>
+<body class="bg-background text-on-background font-body-base antialiased overflow-hidden h-screen flex flex-col">
+<!-- TopNavBar -->
+<header class="bg-surface-container-lowest dark:bg-surface-container-lowest border-b border-outline-variant flex justify-between items-center h-14 px-gutter w-full docked full-width top-0 z-50">
+<div class="flex items-center gap-4">
+<span class="text-headline-md font-headline-md text-on-surface dark:text-on-surface">SGW Resilience Platform</span>
+</div>
+<div class="flex items-center gap-4">
+<span class="text-on-surface-variant text-label-sm font-label-sm">4 files loaded · no live system connections</span>
+<span class="text-primary dark:text-primary font-bold text-label-sm font-label-sm">Forecast updated 14:20</span>
+</div>
+</header>
+<div class="flex flex-1 overflow-hidden relative">
+<!-- SideNavBar -->
+<nav class="bg-surface-container-low dark:bg-surface-container-low border-r border-outline-variant docked w-rail-width h-screen left-0 fixed left-0 top-14 h-[calc(100vh-3.5rem)] w-rail-width flex flex-col py-margin-page z-40">
+<div class="px-6 mb-8 flex flex-col gap-2">
+<div class="h-12 w-12 rounded bg-surface-container-highest flex items-center justify-center text-primary">
+<span aria-label="Scenario Icon" class="material-symbols-outlined text-2xl">cyclone</span>
+</div>
+<h2 class="text-headline-lg font-headline-lg text-primary mt-2">Scenario: Hurricane Delia</h2>
+<p class="text-on-surface-variant text-body-table font-body-table">historical replay</p>
+</div>
+<ul class="flex flex-col flex-1 px-4 gap-1">
+<li>
+<a class="flex items-center gap-3 px-3 py-2 rounded-lg border-l-2 border-secondary bg-surface-container-high text-secondary font-bold transition-all duration-200" href="#">
+<span class="material-symbols-outlined">storm</span>
+<span class="font-body-base text-body-base">Storm Planning</span>
+</a>
+</li>
+<li>
+<a class="flex items-center gap-3 px-3 py-2 rounded-lg text-on-surface-variant hover:bg-surface-container transition-all duration-200 hover:bg-surface-container-highest" href="#">
+<span class="material-symbols-outlined">dashboard</span>
+<span class="font-body-base text-body-base">Dispatch Board</span>
+</a>
+</li>
+</ul>
+</nav>
+<!-- Main Content Area (Dimmed Background) -->
+<main class="ml-rail-width flex-1 bg-surface-dim relative overflow-hidden flex flex-col">
+<!-- Dimming Overlay -->
+<div class="absolute inset-0 bg-primary/40 z-10 backdrop-blur-sm pointer-events-none"></div>
+<!-- Drawer Container -->
+<div class="absolute top-0 right-0 h-full w-[400px] bg-surface-container-lowest border-l border-outline-variant shadow-2xl z-20 flex flex-col animate-[slideIn_0.3s_ease-out]">
+<!-- Drawer Header -->
+<div class="px-6 py-5 border-b border-outline-variant flex justify-between items-start bg-surface-container-lowest">
+<div>
+<div class="flex items-center gap-2 mb-1">
+<span class="material-symbols-outlined text-on-surface-variant text-sm">electric_bolt</span>
+<span class="text-label-sm font-label-sm text-on-surface-variant uppercase tracking-wider">Substation</span>
+</div>
+<h2 class="text-headline-lg font-headline-lg text-primary">Bayside Substation</h2>
+</div>
+<button class="text-on-surface-variant hover:text-primary transition-colors p-1 rounded hover:bg-surface-container">
+<span class="material-symbols-outlined">close</span>
+</button>
+</div>
+<!-- Drawer Scrollable Body -->
+<div class="flex-1 overflow-y-auto p-6 flex flex-col gap-8 scrollbar-hide bg-surface-bright">
+<!-- Risk Badge Section -->
+<div class="flex items-center gap-4 p-4 border border-outline-variant rounded-lg bg-surface-container-lowest">
+<div class="flex items-center justify-center w-12 h-12 rounded-full bg-error-container text-on-error-container">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">warning</span>
+</div>
+<div class="flex flex-col">
+<span class="text-headline-md font-headline-md text-error">High Risk</span>
+<span class="text-body-base font-body-base text-on-surface-variant">High confidence forecast</span>
+</div>
+</div>
+<!-- Why this ranking Section -->
+<section class="flex flex-col gap-4">
+<h3 class="text-headline-md font-headline-md text-primary">Why this ranking</h3>
+<div class="flex flex-col gap-3">
+<!-- Factor 1 -->
+<div class="flex flex-col gap-1">
+<div class="flex justify-between items-center text-body-base font-body-base">
+<span class="text-on-surface">Flood zone</span>
+<span class="text-error font-medium">Strong</span>
+</div>
+<div class="h-2 w-full bg-surface-container rounded-full overflow-hidden">
+<div class="h-full bg-error w-[85%] rounded-full"></div>
+</div>
+</div>
+<!-- Factor 2 -->
+<div class="flex flex-col gap-1">
+<div class="flex justify-between items-center text-body-base font-body-base">
+<span class="text-on-surface">Asset age 41 yrs</span>
+<span class="text-tertiary-container font-medium">Moderate</span>
+</div>
+<div class="h-2 w-full bg-surface-container rounded-full overflow-hidden">
+<div class="h-full bg-tertiary-fixed-dim w-[55%] rounded-full"></div>
+</div>
+</div>
+<!-- Factor 3 -->
+<div class="flex flex-col gap-1">
+<div class="flex justify-between items-center text-body-base font-body-base">
+<span class="text-on-surface">Forecast gusts 85 mph</span>
+<span class="text-secondary font-medium">Slight</span>
+</div>
+<div class="h-2 w-full bg-surface-container rounded-full overflow-hidden">
+<div class="h-full bg-secondary w-[25%] rounded-full"></div>
+</div>
+</div>
+</div>
+</section>
+<!-- Data Provenance Section -->
+<section class="flex flex-col gap-4">
+<h3 class="text-headline-md font-headline-md text-primary">Data Provenance</h3>
+<div class="border border-outline-variant rounded-lg overflow-hidden bg-surface-container-lowest">
+<table class="w-full text-left border-collapse">
+<thead class="bg-surface-container-low border-b border-outline-variant">
+<tr>
+<th class="px-3 py-2 text-body-table font-body-table text-primary font-semibold">Field</th>
+<th class="px-3 py-2 text-body-table font-body-table text-primary font-semibold">Value</th>
+<th class="px-3 py-2 text-body-table font-body-table text-primary font-semibold">Source</th>
+<th class="px-3 py-2 text-body-table font-body-table text-primary font-semibold">Age</th>
+</tr>
+</thead>
+<tbody class="text-mono-data font-mono-data text-on-surface divide-y divide-outline-variant">
+<tr class="hover:bg-surface-container-lowest transition-colors">
+<td class="px-3 py-2 text-on-surface-variant font-body-table">Flood Zone</td>
+<td class="px-3 py-2">Zone AE</td>
+<td class="px-3 py-2 text-secondary">FEMA</td>
+<td class="px-3 py-2 text-on-surface-variant">2yrs</td>
+</tr>
+<tr class="hover:bg-surface-container-lowest transition-colors">
+<td class="px-3 py-2 text-on-surface-variant font-body-table">Location</td>
+<td class="px-3 py-2">34.05, -118.24</td>
+<td class="px-3 py-2 text-secondary">GIS</td>
+<td class="px-3 py-2 text-on-surface-variant">2019</td>
+</tr>
+<tr class="hover:bg-surface-container-lowest transition-colors">
+<td class="px-3 py-2 text-on-surface-variant font-body-table">Wind Data</td>
+<td class="px-3 py-2">85 mph</td>
+<td class="px-3 py-2 text-secondary">NWS</td>
+<td class="px-3 py-2 text-on-surface-variant">1hr</td>
+</tr>
+</tbody>
+</table>
+</div>
+</section>
+</div>
+<!-- Drawer Footer Actions -->
+<div class="px-6 py-4 border-t border-outline-variant bg-surface-container-lowest flex flex-col gap-3">
+<button class="w-full h-10 bg-primary text-on-primary rounded font-body-base text-body-base font-medium hover:bg-on-primary-fixed-variant transition-colors flex items-center justify-center gap-2">
+<span class="material-symbols-outlined text-sm">check</span>
+                        Accept ranking
+                    </button>
+<div class="flex gap-3">
+<button class="flex-1 h-10 border border-outline-variant text-primary rounded font-body-base text-body-base font-medium hover:bg-surface-container transition-colors flex items-center justify-center gap-2">
+<span class="material-symbols-outlined text-sm">tune</span>
+                            Adjust
+                        </button>
+<button class="flex-1 h-10 border border-outline-variant text-primary rounded font-body-base text-body-base font-medium hover:bg-surface-container transition-colors flex items-center justify-center gap-2">
+<span class="material-symbols-outlined text-sm">block</span>
+                            Dismiss
+                        </button>
+</div>
+</div>
+</div>
+</main>
+</div>
+<style>
+        @keyframes slideIn {
+            from {
+                transform: translateX(100%);
+            }
+            to {
+                transform: translateX(0);
+            }
+        }
+    </style>
+</body></html>

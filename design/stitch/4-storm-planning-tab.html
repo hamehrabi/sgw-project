@@ -1,0 +1,362 @@
+<!DOCTYPE html>
+
+<html class="light" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>SGW Resilience Platform - Storm Planning</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "on-primary-fixed-variant": "#3f465c",
+                        "primary-container": "#131b2e",
+                        "primary": "#000000",
+                        "surface-tint": "#565e74",
+                        "on-tertiary-fixed": "#271901",
+                        "secondary-container": "#96eef9",
+                        "surface-container-highest": "#e0e3e5",
+                        "surface-bright": "#f7f9fb",
+                        "tertiary": "#000000",
+                        "surface-container-lowest": "#ffffff",
+                        "surface": "#f7f9fb",
+                        "tertiary-fixed": "#fcdeb5",
+                        "on-error": "#ffffff",
+                        "outline-variant": "#c6c6cd",
+                        "secondary-fixed": "#98f0fb",
+                        "surface-container": "#eceef0",
+                        "on-primary-fixed": "#131b2e",
+                        "tertiary-container": "#271901",
+                        "primary-fixed-dim": "#bec6e0",
+                        "surface-dim": "#d8dadc",
+                        "tertiary-fixed-dim": "#dec29a",
+                        "on-secondary-fixed": "#001f23",
+                        "on-surface-variant": "#45464d",
+                        "on-tertiary": "#ffffff",
+                        "inverse-primary": "#bec6e0",
+                        "inverse-on-surface": "#eff1f3",
+                        "on-secondary": "#ffffff",
+                        "outline": "#76777d",
+                        "on-primary-container": "#7c839b",
+                        "on-background": "#191c1e",
+                        "surface-container-high": "#e6e8ea",
+                        "error-container": "#ffdad6",
+                        "secondary": "#006972",
+                        "on-error-container": "#93000a",
+                        "background": "#f7f9fb",
+                        "on-secondary-fixed-variant": "#004f56",
+                        "error": "#ba1a1a",
+                        "on-secondary-container": "#006d77",
+                        "on-tertiary-fixed-variant": "#574425",
+                        "on-primary": "#ffffff",
+                        "surface-variant": "#e0e3e5",
+                        "on-tertiary-container": "#98805d",
+                        "primary-fixed": "#dae2fd",
+                        "inverse-surface": "#2d3133",
+                        "secondary-fixed-dim": "#7cd4df",
+                        "on-surface": "#191c1e",
+                        "surface-container-low": "#f2f4f6"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0.25rem",
+                        "lg": "0.5rem",
+                        "xl": "0.75rem",
+                        "full": "9999px"
+                    },
+                    "spacing": {
+                        "rail-width": "240px",
+                        "component-gap": "0.5rem",
+                        "margin-page": "2rem",
+                        "gutter": "1.5rem",
+                        "container-max": "1440px"
+                    },
+                    "fontFamily": {
+                        "body-table": ["Inter"],
+                        "mono-data": ["Inter"],
+                        "headline-md": ["Inter"],
+                        "body-base": ["Inter"],
+                        "headline-lg": ["Inter"],
+                        "label-sm": ["Inter"]
+                    },
+                    "fontSize": {
+                        "body-table": ["13px", { "lineHeight": "18px", "fontWeight": "400" }],
+                        "mono-data": ["13px", { "lineHeight": "18px", "fontWeight": "500" }],
+                        "headline-md": ["18px", { "lineHeight": "28px", "letterSpacing": "-0.01em", "fontWeight": "600" }],
+                        "body-base": ["14px", { "lineHeight": "20px", "fontWeight": "400" }],
+                        "headline-lg": ["24px", { "lineHeight": "32px", "letterSpacing": "-0.02em", "fontWeight": "600" }],
+                        "label-sm": ["12px", { "lineHeight": "16px", "letterSpacing": "0.02em", "fontWeight": "500" }]
+                    }
+                }
+            }
+        }
+    </script>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+    </style>
+</head>
+<body class="bg-background text-on-surface font-body-base h-screen overflow-hidden flex">
+<!-- SideNavBar -->
+<nav class="bg-surface-container-low border-r border-outline-variant docked w-rail-width h-screen left-0 fixed left-0 top-0 h-full w-rail-width flex flex-col py-margin-page flex-shrink-0 z-20">
+<div class="px-gutter mb-8">
+<span class="material-symbols-outlined text-4xl text-primary mb-4" data-icon="temp_preferences_custom">temp_preferences_custom</span>
+<h2 class="text-headline-lg font-headline-lg text-primary">Scenario: Hurricane Delia</h2>
+<p class="text-body-base font-body-base text-on-surface-variant mt-1">historical replay</p>
+</div>
+<div class="flex-1 overflow-y-auto">
+<ul class="space-y-1">
+<!-- Active Nav Item -->
+<li>
+<a class="flex items-center px-gutter py-3 border-l-2 border-secondary bg-surface-container-high text-secondary font-bold transition-all duration-200 hover:bg-surface-container-highest" href="#">
+<span class="material-symbols-outlined mr-3" data-icon="storm">storm</span>
+<span class="font-body-table text-body-table">Storm Planning</span>
+</a>
+</li>
+<!-- Inactive Nav Item -->
+<li>
+<a class="flex items-center px-gutter py-3 border-l-2 border-transparent text-on-surface-variant hover:bg-surface-container transition-all duration-200 hover:bg-surface-container-highest" href="#">
+<span class="material-symbols-outlined mr-3" data-icon="dashboard">dashboard</span>
+<span class="font-body-table text-body-table">Dispatch Board</span>
+</a>
+</li>
+</ul>
+</div>
+</nav>
+<!-- Main Content Area -->
+<div class="flex-1 flex flex-col ml-rail-width h-screen overflow-hidden">
+<!-- TopNavBar -->
+<header class="bg-surface-container-lowest flex justify-between items-center h-14 px-gutter w-full docked full-width top-0 border-b border-outline-variant flex-shrink-0 z-10">
+<div class="flex items-center space-x-4">
+<h1 class="text-headline-md font-headline-md text-on-surface">SGW Resilience Platform</h1>
+</div>
+<div class="flex items-center space-x-6 text-on-surface-variant text-label-sm font-label-sm">
+<span>4 files loaded · no live system connections</span>
+<span class="text-primary">Forecast updated 14:20</span>
+</div>
+</header>
+<!-- Canvas -->
+<main class="flex-1 overflow-y-auto p-gutter xl:p-12">
+<div class="max-w-container-max mx-auto space-y-8">
+<!-- Headline -->
+<section>
+<h2 class="text-headline-lg font-headline-lg text-primary max-w-3xl leading-tight">
+                        12 assets are at high risk in the next 72 hours. <br/>
+<span class="text-on-surface-variant">4 of them moved up since the 13:40 forecast.</span>
+</h2>
+</section>
+<!-- Since You Last Looked Strip -->
+<section>
+<div class="flex items-center mb-4">
+<span class="text-label-sm font-label-sm text-on-surface-variant uppercase tracking-wider">Since you last looked</span>
+<div class="ml-4 h-px bg-outline-variant flex-1"></div>
+</div>
+<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-component-gap">
+<!-- Card 1 -->
+<div class="border border-outline-variant rounded bg-surface-container-lowest p-4 flex flex-col hover:bg-surface-container transition-colors duration-200 cursor-pointer">
+<div class="flex justify-between items-start mb-2">
+<span class="font-body-base text-body-base font-semibold text-primary">Bayside Substation</span>
+<div class="flex items-center text-error bg-error-container/30 px-2 py-0.5 rounded text-label-sm font-label-sm">
+<span class="material-symbols-outlined text-[14px] mr-1" data-icon="arrow_upward">arrow_upward</span>
+                                    12
+                                </div>
+</div>
+<span class="text-body-table font-body-table text-on-surface-variant mb-4">Gusts 85 mph</span>
+<a class="mt-auto text-secondary text-label-sm font-label-sm font-semibold hover:underline flex items-center" href="#">
+                                Review <span class="material-symbols-outlined text-[14px] ml-1" data-icon="chevron_right">chevron_right</span>
+</a>
+</div>
+<!-- Card 2 -->
+<div class="border border-outline-variant rounded bg-surface-container-lowest p-4 flex flex-col hover:bg-surface-container transition-colors duration-200 cursor-pointer">
+<div class="flex justify-between items-start mb-2">
+<span class="font-body-base text-body-base font-semibold text-primary">Oakwood Feeder 4</span>
+<div class="flex items-center text-error bg-error-container/30 px-2 py-0.5 rounded text-label-sm font-label-sm">
+<span class="material-symbols-outlined text-[14px] mr-1" data-icon="arrow_upward">arrow_upward</span>
+                                    8
+                                </div>
+</div>
+<span class="text-body-table font-body-table text-on-surface-variant mb-4">Flood gauge +2ft</span>
+<a class="mt-auto text-secondary text-label-sm font-label-sm font-semibold hover:underline flex items-center" href="#">
+                                Review <span class="material-symbols-outlined text-[14px] ml-1" data-icon="chevron_right">chevron_right</span>
+</a>
+</div>
+<!-- Card 3 -->
+<div class="border border-outline-variant rounded bg-surface-container-lowest p-4 flex flex-col hover:bg-surface-container transition-colors duration-200 cursor-pointer">
+<div class="flex justify-between items-start mb-2">
+<span class="font-body-base text-body-base font-semibold text-primary">Southside Relay Node</span>
+<div class="flex items-center text-error bg-error-container/30 px-2 py-0.5 rounded text-label-sm font-label-sm">
+<span class="material-symbols-outlined text-[14px] mr-1" data-icon="arrow_upward">arrow_upward</span>
+                                    5
+                                </div>
+</div>
+<span class="text-body-table font-body-table text-on-surface-variant mb-4">Tree fall</span>
+<a class="mt-auto text-secondary text-label-sm font-label-sm font-semibold hover:underline flex items-center" href="#">
+                                Review <span class="material-symbols-outlined text-[14px] ml-1" data-icon="chevron_right">chevron_right</span>
+</a>
+</div>
+<!-- Card 4 -->
+<div class="border border-outline-variant rounded bg-surface-container-lowest p-4 flex flex-col hover:bg-surface-container transition-colors duration-200 cursor-pointer">
+<div class="flex justify-between items-start mb-2">
+<span class="font-body-base text-body-base font-semibold text-primary">Harbor Switchyard</span>
+<div class="flex items-center text-error bg-error-container/30 px-2 py-0.5 rounded text-label-sm font-label-sm">
+<span class="material-symbols-outlined text-[14px] mr-1" data-icon="arrow_upward">arrow_upward</span>
+                                    3
+                                </div>
+</div>
+<span class="text-body-table font-body-table text-on-surface-variant mb-4">Age factor</span>
+<a class="mt-auto text-secondary text-label-sm font-label-sm font-semibold hover:underline flex items-center" href="#">
+                                Review <span class="material-symbols-outlined text-[14px] ml-1" data-icon="chevron_right">chevron_right</span>
+</a>
+</div>
+</div>
+</section>
+<!-- 60/40 Layout -->
+<div class="grid grid-cols-1 lg:grid-cols-12 gap-gutter mt-8">
+<!-- Left: Assets Table (60%) -->
+<div class="lg:col-span-7 space-y-4 border border-outline-variant rounded bg-surface-container-lowest overflow-hidden flex flex-col">
+<!-- Table Header Controls -->
+<div class="p-4 border-b border-outline-variant flex justify-between items-center bg-surface-bright">
+<div class="flex items-center space-x-4">
+<span class="text-body-base font-body-base font-semibold text-primary">Assets by risk, next 72 hours</span>
+<span class="text-label-sm font-label-sm text-on-surface-variant bg-surface-container px-2 py-1 rounded">218 ranked</span>
+</div>
+<button class="bg-primary text-on-primary px-4 py-2 rounded text-label-sm font-label-sm font-semibold hover:bg-primary/90 transition-colors">Start triage</button>
+</div>
+<!-- Table -->
+<div class="overflow-x-auto">
+<table class="w-full text-left border-collapse">
+<thead class="bg-surface-container-low border-b border-outline-variant">
+<tr>
+<th class="p-3 text-label-sm font-label-sm font-semibold text-on-surface-variant w-16">Rank</th>
+<th class="p-3 text-label-sm font-label-sm font-semibold text-on-surface-variant">Asset</th>
+<th class="p-3 text-label-sm font-label-sm font-semibold text-on-surface-variant">Risk</th>
+<th class="p-3 text-label-sm font-label-sm font-semibold text-on-surface-variant">Why</th>
+</tr>
+</thead>
+<tbody class="divide-y divide-outline-variant">
+<!-- Row 1 -->
+<tr class="hover:bg-surface-container-lowest/50 transition-colors">
+<td class="p-3">
+<div class="flex items-center text-mono-data font-mono-data text-error">
+<span>1</span>
+<span class="material-symbols-outlined text-[14px] ml-1" data-icon="arrow_upward">arrow_upward</span>
+</div>
+</td>
+<td class="p-3">
+<div class="font-body-table text-body-table font-semibold text-primary">Bayside Substation</div>
+<div class="text-label-sm font-label-sm text-on-surface-variant mt-0.5">Transmission · Zone 4</div>
+</td>
+<td class="p-3">
+<span class="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-semibold bg-error-container text-on-error-container uppercase tracking-wide">High</span>
+</td>
+<td class="p-3">
+<div class="flex flex-wrap gap-1">
+<span class="px-2 py-1 bg-surface-container rounded text-[11px] text-on-surface-variant">Wind &gt;80mph</span>
+<span class="px-2 py-1 bg-surface-container rounded text-[11px] text-on-surface-variant">Tree density</span>
+</div>
+</td>
+</tr>
+<!-- Row 2 -->
+<tr class="hover:bg-surface-container-lowest/50 transition-colors">
+<td class="p-3">
+<div class="flex items-center text-mono-data font-mono-data text-error">
+<span>2</span>
+<span class="material-symbols-outlined text-[14px] ml-1" data-icon="arrow_upward">arrow_upward</span>
+</div>
+</td>
+<td class="p-3">
+<div class="font-body-table text-body-table font-semibold text-primary">Oakwood Feeder 4</div>
+<div class="text-label-sm font-label-sm text-on-surface-variant mt-0.5">Distribution · Zone 2</div>
+</td>
+<td class="p-3">
+<span class="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-semibold bg-error-container text-on-error-container uppercase tracking-wide">High</span>
+</td>
+<td class="p-3">
+<div class="flex flex-wrap gap-1">
+<span class="px-2 py-1 bg-surface-container rounded text-[11px] text-on-surface-variant">Flood zone</span>
+<span class="px-2 py-1 bg-surface-container rounded text-[11px] text-on-surface-variant">Elevation low</span>
+</div>
+</td>
+</tr>
+<!-- Row 3 -->
+<tr class="hover:bg-surface-container-lowest/50 transition-colors">
+<td class="p-3">
+<div class="flex items-center text-mono-data font-mono-data text-on-surface-variant">
+<span>3</span>
+<span class="material-symbols-outlined text-[14px] ml-1 opacity-0" data-icon="remove">remove</span>
+</div>
+</td>
+<td class="p-3">
+<div class="font-body-table text-body-table font-semibold text-primary">North Transmission</div>
+<div class="text-label-sm font-label-sm text-on-surface-variant mt-0.5">Main Line · Zone 1</div>
+</td>
+<td class="p-3">
+<span class="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-semibold bg-error-container text-on-error-container uppercase tracking-wide">High</span>
+</td>
+<td class="p-3">
+<div class="flex flex-wrap gap-1">
+<span class="px-2 py-1 bg-surface-container rounded text-[11px] text-on-surface-variant">Critical load</span>
+<span class="px-2 py-1 bg-surface-container rounded text-[11px] text-on-surface-variant">Age</span>
+</div>
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+</div>
+<!-- Right: Stacked Panels (40%) -->
+<div class="lg:col-span-5 flex flex-col space-y-gutter">
+<!-- Map Placeholder -->
+<div class="border border-outline-variant rounded bg-surface-container-lowest overflow-hidden h-64 relative flex items-center justify-center">
+<div class="absolute inset-0 bg-surface-container-low" data-alt="A muted, stylized map showing infrastructure network lines and nodes in a calm, data-focused light mode aesthetic. The map uses subtle grays and off-whites, with small, distinct red and yellow dots indicating risk areas. The overall style is minimal, professional, and suitable for a high-end dashboard." style="background-image: url('https://lh3.googleusercontent.com/aida-public/AB6AXuDKIdWd-IqbfD33iYWe0_nOI6-9I5sOGOGG2j1-Ld-FcWXL2H0IfbE9sqcrMVwX8JgDNShO2BVVL0BDZF6L-_SBwRymNcfswEt_27Bdy36kEHKKEUYGD3xsHkODzqsGDdigqswHEG7s4cDZRvyOKSL5WyweQZq7ZmYEyICUU-coz1edQZjx5k-ERG9_P7i77qOrFZsl1fq79flLU_Bs3DjzgKuBlzeFomqqHw19MvtPdYBruT3Q90OQaA')"></div>
+<span class="text-on-surface-variant text-label-sm font-label-sm bg-surface-container-lowest/80 px-3 py-1 rounded border border-outline-variant z-10">Map View (Risk Dots)</span>
+</div>
+<!-- Crew Staging Plan -->
+<div class="border border-outline-variant rounded bg-surface-container-lowest p-4">
+<h3 class="text-body-base font-body-base font-semibold text-primary mb-4 flex items-center">
+<span class="material-symbols-outlined mr-2 text-[18px]" data-icon="group_work">group_work</span>
+                                Crew Staging Plan
+                            </h3>
+<div class="space-y-3">
+<!-- Depot 1 -->
+<div class="flex items-center justify-between">
+<div>
+<div class="text-body-table font-body-table font-semibold">North Depot</div>
+<div class="text-label-sm font-label-sm text-on-surface-variant">Zone 1 &amp; 2</div>
+</div>
+<div class="flex items-center space-x-2">
+<span class="bg-secondary-container text-on-secondary-container px-2 py-0.5 rounded text-[10px] font-semibold uppercase">Recommended</span>
+<div class="flex items-center border border-outline-variant rounded">
+<button class="px-2 py-1 text-on-surface-variant hover:bg-surface-container"><span class="material-symbols-outlined text-[14px]" data-icon="remove">remove</span></button>
+<span class="px-2 text-mono-data font-mono-data text-sm">24</span>
+<button class="px-2 py-1 text-on-surface-variant hover:bg-surface-container"><span class="material-symbols-outlined text-[14px]" data-icon="add">add</span></button>
+</div>
+</div>
+</div>
+<!-- Depot 2 -->
+<div class="flex items-center justify-between">
+<div>
+<div class="text-body-table font-body-table font-semibold">East Depot</div>
+<div class="text-label-sm font-label-sm text-on-surface-variant">Zone 3</div>
+</div>
+<div class="flex items-center space-x-2">
+<div class="flex items-center border border-outline-variant rounded">
+<button class="px-2 py-1 text-on-surface-variant hover:bg-surface-container"><span class="material-symbols-outlined text-[14px]" data-icon="remove">remove</span></button>
+<span class="px-2 text-mono-data font-mono-data text-sm">12</span>
+<button class="px-2 py-1 text-on-surface-variant hover:bg-surface-container"><span class="material-symbols-outlined text-[14px]" data-icon="add">add</span></button>
+</div>
+</div>
+</div>
+</div>
+</div>
+</div>
+</div>
+</div>
+</main>
+</div>
+</body></html>
