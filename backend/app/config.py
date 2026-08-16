@@ -8,9 +8,12 @@ Two rules from the specification shape this module:
 - **A missing value fails at startup, named.** Never at the first request during a storm
   (TASK-001 step 2, acceptance criterion 7).
 
-Only the values TASK-001 actually reads are required here. The scenario limits and the
-LLM guards are deliberately absent: requiring them now would block this task on Q-029 and
-Q-030, which `task-index.md` is explicit do not block building.
+**The LLM guards are conditional on one required switch, and the switch has no default
+either.** `LLM_ENABLED` must be set to exactly `true` or `false`: absence cannot be a
+silent mode, and `false` is a decision somebody wrote down. When it is `true`, all five
+guards ADR-009 makes mandatory (Q-029, Q-030) are required with it — a model with no cost
+ceiling is an unbounded invoice, so half-configured is refused at startup rather than
+discovered on one.
 """
 
 import os
@@ -35,6 +38,19 @@ class Config:
     scenario_max_total_bytes: int
     scenario_parse_timeout_seconds: int
     scenario_stale_after_hours: int
+    # CHG-053: a temporary password's lifetime. A lifetime, so no default (ADR-006).
+    temp_password_expiry_hours: int
+    # The prepared dataset behind "Use sample storm data". It goes through the same parse
+    # path as a real upload — this only says where the files are.
+    sample_scenario_dir: str
+    # CHG-040 / ADR-009. When false, the summary is assembled from figures and the model
+    # is never called; the five guards below are then permitted to be absent.
+    llm_enabled: bool
+    openai_api_key: str | None
+    openai_model: str | None
+    llm_max_calls_per_ranking: int | None
+    llm_monthly_cost_ceiling_usd: float | None
+    llm_timeout_seconds: int | None
 
     @property
     def cookies_require_https(self) -> bool:
@@ -63,9 +79,33 @@ def _required_int(env: Mapping[str, str], name: str, minimum: int, maximum: int)
     return value
 
 
+def _required_bool(env: Mapping[str, str], name: str) -> bool:
+    raw = _required(env, name).lower()
+    if raw not in ("true", "false"):
+        # Exactly two spellings. "1", "yes" and "on" are how a typo becomes a mode.
+        raise ConfigError(f"{name} must be exactly 'true' or 'false'.")
+    return raw == "true"
+
+
+def _required_float(env: Mapping[str, str], name: str, minimum: float, maximum: float) -> float:
+    raw = _required(env, name)
+    try:
+        value = float(raw)
+    except ValueError:
+        raise ConfigError(f"{name} must be a number.") from None
+    if not minimum <= value <= maximum:
+        raise ConfigError(f"{name} must be between {minimum} and {maximum}.")
+    return value
+
+
 def load_config(env: Mapping[str, str] | None = None) -> Config:
     """Validate the whole environment and return it, or raise naming the first problem."""
     env = os.environ if env is None else env
+
+    # The switch is read first because five other values hang off it. When the model is
+    # off, its guards are not read at all — an invalid OPENAI_MODEL must not stop an
+    # application that was never going to call one.
+    llm_enabled = _required_bool(env, "LLM_ENABLED")
 
     return Config(
         app_env=_required(env, "APP_ENV"),
@@ -100,5 +140,31 @@ def load_config(env: Mapping[str, str] | None = None) -> Config:
         # constant somebody can quietly adjust.
         scenario_stale_after_hours=_required_int(
             env, "SCENARIO_STALE_AFTER_HOURS", minimum=1, maximum=168
+        ),
+        # CHG-053. 24 is the shipped value; the number lives in the environment because it
+        # is a lifetime, and ADR-006's rule for lifetimes is: read, never defaulted.
+        temp_password_expiry_hours=_required_int(
+            env, "TEMP_PASSWORD_EXPIRY_HOURS", minimum=1, maximum=168
+        ),
+        sample_scenario_dir=_required(env, "SAMPLE_SCENARIO_DIR"),
+        llm_enabled=llm_enabled,
+        # ADR-009 makes all five mandatory when the model is on (Q-029, Q-030). Absent and
+        # unread when it is off: absence cannot be a silent mode either way.
+        openai_api_key=_required(env, "OPENAI_API_KEY") if llm_enabled else None,
+        openai_model=_required(env, "OPENAI_MODEL") if llm_enabled else None,
+        llm_max_calls_per_ranking=(
+            _required_int(env, "LLM_MAX_CALLS_PER_RANKING", minimum=1, maximum=100_000)
+            if llm_enabled
+            else None
+        ),
+        llm_monthly_cost_ceiling_usd=(
+            _required_float(env, "LLM_MONTHLY_COST_CEILING_USD", minimum=0.01, maximum=100_000)
+            if llm_enabled
+            else None
+        ),
+        llm_timeout_seconds=(
+            _required_int(env, "LLM_TIMEOUT_SECONDS", minimum=1, maximum=120)
+            if llm_enabled
+            else None
         ),
     )

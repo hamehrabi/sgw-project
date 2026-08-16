@@ -1,6 +1,6 @@
 """TASK-001 acceptance criterion 6 — defined in `02-tasks/02-task-files/TASK-001.md`.
 
-"Attempting to insert a user with a role other than `admin` or `user` is refused by the
+"Attempting to insert a user with a role other than `admin` or `operator` is refused by the
 **database**."
 
 No `TEST-` identifier is cited because the register defines none for this criterion, and
@@ -26,11 +26,11 @@ def test_the_two_specified_roles_are_accepted(application):
         conn, name="A", email="a@sgw.example", password="a-password", role="admin"
     )
     assert users.create_user(
-        conn, name="B", email="b@sgw.example", password="a-password", role="user"
+        conn, name="B", email="b@sgw.example", password="a-password", role="operator"
     )
 
 
-@pytest.mark.parametrize("role", ["superuser", "operator", "ADMIN", "", "administrator"])
+@pytest.mark.parametrize("role", ["superuser", "user", "ADMIN", "", "administrator"])
 def test_the_database_refuses_any_other_role(application, role):
     """Issued directly against the store, bypassing anything the application might check."""
     conn = application.state.db
@@ -49,7 +49,7 @@ def test_email_is_unique(application):
     from app.store import users
 
     conn = application.state.db
-    users.create_user(conn, name="A", email="dup@sgw.example", password="pw", role="user")
+    users.create_user(conn, name="A", email="dup@sgw.example", password="pw", role="operator")
 
     with pytest.raises(sqlite3.IntegrityError):
-        users.create_user(conn, name="B", email="dup@sgw.example", password="pw", role="user")
+        users.create_user(conn, name="B", email="dup@sgw.example", password="pw", role="operator")

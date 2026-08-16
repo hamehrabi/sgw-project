@@ -43,7 +43,7 @@ def test_no_credential_or_session_value_appears_in_a_successful_sign_in_body(cli
     assert "$2b$" not in response.text
     # The session value belongs in the cookie and nowhere else. A body carrying it puts a
     # credential into anything that logs a response.
-    assert set(body) == {"user_id", "name", "role"}
+    assert set(body) == {"user_id", "name", "role", "must_change_password"}
     for cookie_value in client.cookies.values():
         assert cookie_value not in response.text
 

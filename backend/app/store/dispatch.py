@@ -49,7 +49,22 @@ JOBS_SQL = "select * from repair_jobs where scenario_id = ? order by seq"
 # the job's neighbourhood comes from the first report ever filed for it, which is the only
 # stored form of that fact once a false alarm has been dismissed (CHG-020). Splitting the two in
 # `api/views.py` keeps the board at two statements whatever the report count (PTEST-002).
-REPORTS_SQL = "select * from damage_reports where scenario_id = ? order by seq"
+#
+# The asset's criticality travels with each report (CHG-050) so the queue's impact order
+# can be derived without a third statement. A left join: a report naming no asset is
+# still a report (§4), and it is simply not critical-by-asset.
+REPORTS_SQL = (
+    "select r.*, coalesce(a.is_critical_facility, 0) as asset_is_critical"
+    " from damage_reports r"
+    " left join assets a on a.id = r.asset_id and a.scenario_id = r.scenario_id"
+    " where r.scenario_id = ? order by r.seq"
+)
+
+# CHG-050's second impact fact: a job accounting for at least this many customers out is
+# Medium priority even when no critical facility is behind it. Uncalibrated, exactly like
+# ADR-007's weights, and stated as such — SGW's dispatch supervisors are the exit
+# condition. It is IMPACT, never risk: no value from risk_scores enters this derivation.
+IMPACT_CUSTOMERS_MEDIUM_AT = 1000
 
 OPEN = "open"
 # The status a cleared false alarm carries (REQ-F-008). Named here rather than spelled out at
@@ -200,7 +215,9 @@ def find_report(connection, report_id) -> sqlite3.Row | None:
     ).fetchone()
 
 
-def file_report(connection, *, scenario_id, neighbourhood, asset_id, reported_by) -> sqlite3.Row:
+def file_report(
+    connection, *, scenario_id, neighbourhood, asset_id, reported_by, customers_out=None
+) -> sqlite3.Row:
     """Record one damage report and attach it to the job for its location.
 
     One transaction: a report written without its job, or a job written without the report
@@ -240,8 +257,8 @@ def file_report(connection, *, scenario_id, neighbourhood, asset_id, reported_by
         connection.execute(
             "insert into damage_reports"
             " (id, scenario_id, asset_id, repair_job_id, location, reported_at, reported_by,"
-            " status, seq)"
-            " values (?, ?, ?, ?, ?, ?, ?, ?,"
+            " status, customers_out, seq)"
+            " values (?, ?, ?, ?, ?, ?, ?, ?, ?,"
             " (select coalesce(max(seq), 0) + 1 from damage_reports))",
             (
                 report_id,
@@ -254,6 +271,9 @@ def file_report(connection, *, scenario_id, neighbourhood, asset_id, reported_by
                 now,
                 reported_by,
                 OPEN,
+                # Null means the caller did not say — not zero out (CHG-050, defect 4's
+                # lesson applied at the reporting boundary).
+                customers_out,
             ),
         )
         connection.commit()

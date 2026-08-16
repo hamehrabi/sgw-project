@@ -9,14 +9,18 @@ from fastapi import FastAPI
 from fastapi.exceptions import RequestValidationError
 
 from app.api import (
+    activity,
     auth,
     dismissals,
     dispatch,
     errors,
     health,
     placements,
+    quality,
     recommendations,
     scenarios,
+    staging,
+    summaries,
 )
 from app.api.middleware import RequestContext, SessionGuard
 from app.api.rate_limit import RateLimiter
@@ -48,6 +52,10 @@ def create_app() -> FastAPI:
     application.include_router(dismissals.router)
     application.include_router(placements.router)
     application.include_router(recommendations.router)
+    application.include_router(quality.router)
+    application.include_router(staging.router)
+    application.include_router(summaries.router)
+    application.include_router(activity.router)
 
     # Added inner-first: the last one added is the outermost, so every request gets a
     # correlation id and a safe failure before it reaches the session check.

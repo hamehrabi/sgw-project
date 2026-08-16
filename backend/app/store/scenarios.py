@@ -10,7 +10,8 @@ import sqlite3
 import uuid
 from datetime import UTC, datetime
 
-from app.store import blanks, forecasts
+from app.store import blanks, forecasts, matches, staging
+from app.store import findings as findings_store
 
 # The two bounds `scenarios_identity_shape` holds, in the one place the service layer reads them.
 # **Two hard-coded copies of one number are tied together by nothing**, and when they drift the
@@ -131,11 +132,11 @@ def save_loaded_scenario(
         connection.execute(
             "insert into scenarios"
             " (id, name, source_note, content_key, loaded_by, loaded_at, forecast_revision,"
-            " forecast_issued_at, seq)"
+            " forecast_issued_at, design_references, seq)"
             # `seq` is taken inside the statement, from the table itself, by the single writer
             # (ADR-002). A counter held beside the connection is indistinguishable inside one
             # process and restarts at 1 after a restart, which `unique (seq)` then refuses.
-            " values (?, ?, ?, ?, ?, ?, 0, ?,"
+            " values (?, ?, ?, ?, ?, ?, 0, ?, ?,"
             " (select coalesce(max(seq), 0) + 1 from scenarios))",
             (
                 scenario_id,
@@ -145,41 +146,73 @@ def save_loaded_scenario(
                 loaded_by,
                 _now(),
                 result.forecast_issued_at,
+                # CHG-051: the storm's own design basis, when the manifest states one.
+                json.dumps(result.design_references) if result.design_references else None,
             ),
         )
+        asset_rows = [
+            (
+                f"AS-{uuid.uuid4().hex[:12]}",
+                scenario_id,
+                json.dumps(asset.external_ids),
+                asset.type,
+                json.dumps({"lat": asset.lat, "lon": asset.lon}),
+                asset.condition,
+                asset.condition_source,
+                asset.condition_observed_at,
+                int(asset.condition_estimated),
+                asset.grid_cell_id,
+                asset.wind_gust_mph,
+                asset.rainfall_in,
+                asset.install_year,
+                asset.flood_zone,
+                asset.name,
+                asset.match_status,
+                int(asset.is_critical_facility),
+                _now(),
+            )
+            for asset in result.assets
+        ]
         connection.executemany(
             "insert into assets (id, scenario_id, external_ids, type, location, condition,"
             " condition_source, condition_observed_at, condition_estimated, grid_cell_id,"
             " wind_gust_mph, rainfall_in, install_year, flood_zone, name, match_status,"
-            " created_at)"
-            " values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            [
-                (
-                    f"AS-{uuid.uuid4().hex[:12]}",
-                    scenario_id,
-                    json.dumps(asset.external_ids),
-                    asset.type,
-                    json.dumps({"lat": asset.lat, "lon": asset.lon}),
-                    asset.condition,
-                    asset.condition_source,
-                    asset.condition_observed_at,
-                    int(asset.condition_estimated),
-                    asset.grid_cell_id,
-                    asset.wind_gust_mph,
-                    asset.rainfall_in,
-                    asset.install_year,
-                    asset.flood_zone,
-                    asset.name,
-                    asset.match_status,
-                    _now(),
-                )
-                for asset in result.assets
-            ],
+            " is_critical_facility, created_at)"
+            " values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            asset_rows,
         )
         # The whole forecast series, in the same transaction (CHG-025). A storm without its
         # forecasts is a storm REQ-F-004 cannot re-rank, and half a series is worse than none.
         forecasts.save_series(
             connection, scenario_id, result.forecast_revisions, created_at=_now()
+        )
+        # The rest of what the load produced, in the same transaction and for the same
+        # reason: a storm must not exist half-described.
+        #   - service areas (CHG-049): the staging panel's depots
+        #   - findings (CHG-047): the quality screen, tomorrow as well as today
+        #   - withheld matches (CHG-048): the review queue's content
+        staging.save_areas(
+            connection, scenario_id, result.service_areas, result.service_area_names
+        )
+        findings_store.save(connection, scenario_id, result.findings, now=_now())
+        by_code = {
+            code: row[0]
+            for row, asset in zip(asset_rows, result.assets, strict=True)
+            for code in asset.external_ids
+        }
+        matches.save(
+            connection,
+            scenario_id,
+            [
+                {
+                    "asset_id": by_code[candidate["anchor_code"]],
+                    "map_record": candidate["map_record"],
+                    "candidate_record": candidate["candidate_record"],
+                    "confidence": candidate["confidence"],
+                }
+                for candidate in result.match_candidates
+                if candidate["anchor_code"] in by_code
+            ],
         )
         connection.execute(
             "update scenario_uploads set status = 'ready', scenario_id = ?, finished_at = ?"

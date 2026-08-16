@@ -12,6 +12,8 @@ import uuid
 from dataclasses import asdict
 from datetime import UTC, datetime
 
+from app.store import movement
+
 
 def _insert_scores(connection, *, scenario_id, forecast_revision, ranked, weight_set_version, now):
     connection.executemany(
@@ -63,9 +65,21 @@ def save_ranking(connection, *, scenario_id, forecast_revision, ranked, weight_s
 
 
 def save_revision(
-    connection, *, scenario_id, from_revision, to_revision, ranked, weight_set_version
+    connection,
+    *,
+    scenario_id,
+    from_revision,
+    to_revision,
+    ranked,
+    weight_set_version,
+    movement_rows=None,
+    movement_label=None,
 ):
     """REQ-F-004's write: the new ranking **and** the scenario's pointer, or neither.
+
+    `movement_rows` (CHG-044) travel in the same transaction when the caller computed
+    them: a revision whose ranking exists but whose movement does not is a strip lying by
+    omission, and the diff is a fact about exactly this write.
 
     `reliability-specification.md` says a revision is one transaction, and this is why it has
     to be: a ranking written without the pointer is a revision nobody can reach by default, and
@@ -98,6 +112,14 @@ def save_revision(
         if moved != 1:
             raise RuntimeError(
                 f"{scenario_id} was no longer at forecast revision {from_revision}"
+            )
+        if movement_rows:
+            movement.save(
+                connection,
+                scenario_id=scenario_id,
+                forecast_revision=to_revision,
+                rows=movement_rows,
+                previous_label=movement_label or f"revision {from_revision}",
             )
         connection.commit()
     except Exception:

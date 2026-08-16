@@ -21,7 +21,7 @@ def make_account(application):
         name="Dispatcher",
         email="user@sgw.example",
         password=USER_PASSWORD,
-        role="user",
+        role="operator",
     )
 
 
@@ -43,7 +43,7 @@ def test_a_session_outlives_the_process_that_created_it(tmp_path, monkeypatch):
     response = second.get("/api/v1/auth/session")
 
     assert response.status_code == 200
-    assert response.json()["role"] == "user"
+    assert response.json()["role"] == "operator"
 
 
 def test_signing_out_before_the_restart_still_holds_after_it(tmp_path, monkeypatch):

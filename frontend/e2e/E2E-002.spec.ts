@@ -97,7 +97,7 @@ test('a refusal names the file and changes nothing', async ({ page }) => {
 test('a non-admin is not offered the upload panel', async ({ page }) => {
   await signIn(page, 'dispatch@sgw.example')
 
-  await expect(page.getByTestId('role')).toHaveText('user')
+  await expect(page.getByTestId('role')).toHaveText('operator')
   await expect(page.getByTestId('upload-panel')).toHaveCount(0)
   // Hiding it is for the user; the server refusing it is the security. STEST-005 calls the
   // endpoint directly for exactly that reason, and this assertion does not replace it.

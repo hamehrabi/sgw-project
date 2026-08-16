@@ -17,6 +17,31 @@ from app.scoring.rank import RankedAsset, rank_assets
 from app.store import scenarios
 
 
+def references_for(connection, scenario_id: str) -> dict:
+    """CHG-051: the storm's own design basis first, CHG-014's sourced table beneath it.
+
+    Merged per type rather than replaced whole: a manifest that states the substation
+    basis and omits the pump's gets its substation number and the fallback's pump number,
+    each still carrying where it came from.
+    """
+    row = connection.execute(
+        "select design_references from scenarios where id = ?", (scenario_id,)
+    ).fetchone()
+    merged = dict(references.ASSET_TYPE_REFERENCES)
+    for kind, values in json.loads((row["design_references"] if row else None) or "{}").items():
+        try:
+            merged[kind] = references.AssetTypeReference(
+                design_gust_mph=float(values["design_gust_mph"]),
+                service_life_years=float(values["service_life_years"]),
+                source="manifest design_references — the utility's own stated basis",
+            )
+        except (KeyError, TypeError, ValueError):
+            # Half a reference is not a reference. The sourced fallback stands, which is
+            # the honest answer to a manifest that names a type and forgets its numbers.
+            continue
+    return merged
+
+
 @dataclass
 class _Scorable:
     """A stored asset row, in the shape the scorer reads.
@@ -71,6 +96,55 @@ def as_scorable(rows) -> list[_Scorable]:
     ]
 
 
+def movement_between(connection, scenario_id: str, previous_revision: int, scoring: ScoringPass):
+    """CHG-044: the strip's rows — a diff of the pass just computed against the stored,
+    delivered ranking it supersedes. **Nothing is re-scored here**: the previous side is
+    read back from `risk_scores`, the current side is the pass the caller is about to
+    store, and the reason a mover carries is the factor whose stored contribution grew.
+    """
+    previous = {
+        row["asset_id"]: row
+        for row in connection.execute(
+            "select asset_id, rank, reasons from risk_scores"
+            " where scenario_id = ? and forecast_revision = ?",
+            (scenario_id, previous_revision),
+        )
+    }
+
+    rows = []
+    for asset_id, item in scoring.pairs:
+        earlier = previous.get(asset_id)
+        previous_rank = earlier["rank"] if earlier else None
+        if item.rank == previous_rank:
+            continue
+        # The factor whose contribution grew the most between the two passes — derived
+        # from the same arithmetic that produced both scores, never authored (BR-002's
+        # shape). Contributions are matched by factor name across the two stored shapes.
+        earlier_contributions = (
+            {r["factor"]: r["contribution"] for r in json.loads(earlier["reasons"])}
+            if earlier
+            else {}
+        )
+        growth = [
+            (reason.contribution - earlier_contributions.get(reason.factor, 0.0), reason)
+            for reason in item.reasons
+        ]
+        reason = max(growth, key=lambda pair: pair[0])[1] if growth else None
+        rows.append(
+            {
+                "asset_id": asset_id,
+                "previous_rank": previous_rank,
+                "current_rank": item.rank,
+                "band": item.band,
+                "reason_factor": reason.factor if reason else "unscored",
+                "reason_detail": (
+                    reason.detail if reason else (item.unscored_reason or "not scored")
+                ),
+            }
+        )
+    return rows
+
+
 def score_revision(connection, scenario_id: str, forecast_revision: int) -> ScoringPass:
     """Score **every** asset in the storm against one revision's forecast.
 
@@ -79,7 +153,7 @@ def score_revision(connection, scenario_id: str, forecast_revision: int) -> Scor
     tell apart from a whole one.
     """
     rows = scenarios.assets_with_forecast(connection, scenario_id, forecast_revision)
-    ranked = rank_assets(as_scorable(rows))
+    ranked = rank_assets(as_scorable(rows), references=references_for(connection, scenario_id))
     by_code = {code: row["id"] for row in rows for code in json.loads(row["external_ids"])}
     return ScoringPass(
         forecast_revision=forecast_revision,

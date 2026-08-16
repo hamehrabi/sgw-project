@@ -16,7 +16,9 @@ from dataclasses import dataclass
 
 # Bump on ANY change below. A ranking stored under one version is not comparable with a
 # ranking stored under another, and the store is what makes that checkable.
-WEIGHT_SET_VERSION = "adr-007-v1"
+# v2: CHG-042 (unrecognised zone scores minimal with a reason, instead of UNSCORED) and
+# CHG-043 (A, AO, AH join the table at the AE value).
+WEIGHT_SET_VERSION = "adr-007-v2"
 
 # --- The four factors and their weights (ADR-007) ----------------------------------------
 # Uncalibrated. ADR-007's reasoning: what is about to hit the asset matters most, where it
@@ -41,11 +43,24 @@ BAND_MEDIUM_AT = 30.0
 STRENGTH_STRONG_AT = 0.25
 STRENGTH_MODERATE_AT = 0.10
 
-# --- Flood zone lookup (ADR-007) ------------------------------------------------------------
-# FEMA zones. A zone outside this table is not defaulted — the asset becomes UNSCORED with
-# that as its reason (FTEST-004), because guessing an exposure is how a coastal asset gets
-# ranked like an inland one.
-FLOOD_ZONE_EXPOSURE: dict[str, float] = {"VE": 1.0, "AE": 0.7, "X": 0.1}
+# --- Flood zone lookup (ADR-007, amended by CHG-042 and CHG-043) -----------------------------
+# FEMA zones. A, AO and AH are within the same 1%-annual-chance floodplain as AE — the
+# letters record how the elevation was surveyed, not a different exposure — so all three
+# carry the AE value rather than a fourth uncalibrated number (CHG-043).
+FLOOD_ZONE_EXPOSURE: dict[str, float] = {
+    "VE": 1.0,
+    "AE": 0.7,
+    "A": 0.7,
+    "AO": 0.7,
+    "AH": 0.7,
+    "X": 0.1,
+}
+
+# A zone outside the table — FEMA's D means "flood hazard undetermined", and real assets
+# carry it — scores at the minimal value WITH a reason naming the code (CHG-042). Not
+# UNSCORED: discarding three known factors because the fourth is undetermined loses more
+# than it protects. Never silent: the reason is what stops "minimal" reading as "safe".
+FLOOD_ZONE_UNRECOGNISED_EXPOSURE = FLOOD_ZONE_EXPOSURE["X"]
 
 # --- Condition decay (ADR-007) --------------------------------------------------------------
 # "Condition rating, decayed by inspection staleness". The decay makes distrust of an old

@@ -40,6 +40,21 @@ FOURTEEN = "014_a_dismissal_is_never_anonymous"
 # stack rolled back in the wrong order is not lossless, and an ops procedure is where that is
 # discovered at the worst moment.
 FIFTEEN = "015_one_audit_row_and_one_whitespace_alphabet"
+# Everything above 015 comes off first and goes back on last, discovered from the
+# directory rather than listed: migration 018 ALTERs a column onto the table 015
+# rebuilds, so cycling 014/015 beneath it would silently strip that column — which is
+# exactly the wrong-order rollback this file's docstring warns an ops procedure dies of.
+# Reading the directory keeps this true for migration 025 without anyone remembering.
+ABOVE_FIFTEEN = tuple(
+    sorted(
+        (
+            path.name.removesuffix(".up.sql")
+            for path in MIGRATIONS.glob("*.up.sql")
+            if path.name >= "016"
+        ),
+        reverse=True,
+    )
+)
 APPEND_ONLY = ("decision_records_no_update", "decision_records_no_delete")
 ADDED = ("damage_reports_dismissal_is_final", "decision_records_dismiss_shape")
 ONE_AUDIT_ROW_INDEX = "decision_records_one_dismissal_per_report"
@@ -90,9 +105,14 @@ def roll_back_one(connection, name: str) -> None:
 
 
 def roll_back(connection) -> None:
-    """**Newest first.** 015 rebuilds the table 014 rebuilt and recreates the same two triggers
-    against it; taking 014 off first would leave 015's rebuild replacing a table that had already
-    been replaced, with the wrong pair of triggers reparsed onto it."""
+    """**Newest first, from the top of the stack.** 015 rebuilds the table 014 rebuilt and
+    recreates the same two triggers against it; taking 014 off first would leave 015's
+    rebuild replacing a table that had already been replaced. And everything above 015
+    comes off before either, because 018 ALTERs a column onto the same table — cycling
+    014/015 beneath it would strip `customers_out` silently and the board would 500 on
+    the next filed report, which is how this ordering rule was found."""
+    for name in ABOVE_FIFTEEN:
+        roll_back_one(connection, name)
     roll_back_one(connection, FIFTEEN)
     roll_back_one(connection, FOURTEEN)
 
@@ -100,7 +120,11 @@ def roll_back(connection) -> None:
 def roll_forward(connection) -> None:
     from app.store import migrate
 
-    assert migrate.run(connection) == [f"{FOURTEEN}.up.sql", f"{FIFTEEN}.up.sql"]
+    assert migrate.run(connection) == [
+        f"{FOURTEEN}.up.sql",
+        f"{FIFTEEN}.up.sql",
+        *[f"{name}.up.sql" for name in reversed(ABOVE_FIFTEEN)],
+    ]
 
 
 def indexes(connection) -> set[str]:

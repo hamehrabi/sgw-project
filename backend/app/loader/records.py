@@ -19,6 +19,11 @@ class Finding:
     code: str
     subject: str
     message: str
+    # Which uploaded file the check actually read (CHG-047). Set where the rule runs,
+    # never inferred later: defect 3 is measured in whichever file carried the gusts, and
+    # a rule that names a file it did not read is wrong the moment a scenario is shaped
+    # differently.
+    affected_file: str = ""
 
 
 @dataclass
@@ -41,6 +46,9 @@ class LoadedAsset:
     rainfall_in: float | None = None
     # AC-001: 'matched' or 'needs_review'. Never dropped, never merged on a guess.
     match_status: str = "matched"
+    # CON-003's one permitted boolean about an asset (CHG-050). Optional in the file;
+    # absent reads as false, because "critical" is a claim somebody made, not a default.
+    is_critical_facility: bool = False
 
 
 @dataclass(frozen=True)
@@ -97,7 +105,18 @@ class LoadResult:
     outages: list[LoadedOutage] = field(default_factory=list)
     failures: list[LoadedOutage] = field(default_factory=list)
     service_areas: dict[str, int] = field(default_factory=dict)
+    # Optional names for the areas above, keyed the same way (CHG-049: a depot is a
+    # service area, and the manifest may give it a human name).
+    service_area_names: dict[str, str] = field(default_factory=dict)
     findings: list[Finding] = field(default_factory=list)
+    # Defect 1's withheld merges, both sides kept (CHG-048): what the loader deferred to
+    # a person, in the shape the review drawer shows. Each entry names the asset row it
+    # concerns, the record already at the site, and the record the merge was withheld
+    # from — because `needs_review` alone told the person nothing to review.
+    match_candidates: list[dict] = field(default_factory=list)
+    # CHG-051: the utility's own design basis, keyed by asset type, when the manifest
+    # carries one. The scorer reads this first and falls back to CHG-014's sourced table.
+    design_references: dict = field(default_factory=dict)
 
 
 class LoadFailed(Exception):

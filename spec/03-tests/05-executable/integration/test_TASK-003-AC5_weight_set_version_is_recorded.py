@@ -35,7 +35,9 @@ def test_the_version_is_stored_on_every_row(client, application, accounts):
         for row in application.state.db.execute("select weight_set_version from risk_scores")
     }
 
-    assert versions == {"adr-007-v1"}
+    from app.scoring.references import WEIGHT_SET_VERSION
+
+    assert versions == {WEIGHT_SET_VERSION}
 
 
 def test_the_column_refuses_a_row_without_one(client, application, accounts):
@@ -64,15 +66,17 @@ def test_the_version_reaches_the_api_so_a_reader_can_see_it(client, accounts):
 
     body = client.get(f"/api/v1/scenarios/{scenario_id}/risks").json()
 
-    assert body["weight_set_version"] == "adr-007-v1"
-    assert all(item["weight_set_version"] == "adr-007-v1" for item in body["items"])
+    from app.scoring.references import WEIGHT_SET_VERSION
+
+    assert body["weight_set_version"] == WEIGHT_SET_VERSION
+    assert all(item["weight_set_version"] == WEIGHT_SET_VERSION for item in body["items"])
 
 
 def test_recalibrating_does_not_rewrite_what_was_already_stored(client, application, accounts):
     """The point of the criterion, demonstrated rather than asserted.
 
-    A ranking written under `adr-007-v1` must still say `adr-007-v1` after the weights are
-    changed. If the version were derived at read time from current configuration instead of
+    A ranking written under one version must still say that version after the weights
+    are changed. If the version were derived at read time from current configuration instead of
     stored at write time, this passes silently today and quietly rewrites history the first
     time anyone calibrates.
     """
@@ -88,5 +92,5 @@ def test_recalibrating_does_not_rewrite_what_was_already_stored(client, applicat
     finally:
         references.WEIGHT_SET_VERSION = original
 
-    assert after["weight_set_version"] == "adr-007-v1"
+    assert after["weight_set_version"] == original
     assert after["items"] == before["items"], "a stored ranking must not change under its feet"

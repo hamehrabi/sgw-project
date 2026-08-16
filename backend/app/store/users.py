@@ -81,6 +81,40 @@ def create_user(
     return user_id
 
 
+def set_temporary_password(
+    connection: sqlite3.Connection,
+    *,
+    user_id: str,
+    password: str,
+    cost: int,
+    expires_at: str,
+) -> None:
+    """An admin-set temporary password (CHG-053, CHG-004).
+
+    Single-use in effect: `must_change_password` refuses every route but the change, and
+    the change replaces the hash. `expires_at` is checked at sign-in — after it, the
+    temporary password is a refused credential, not a slow-burning permanent one.
+    """
+    connection.execute(
+        "update users set password_hash = ?, must_change_password = 1,"
+        " temp_password_expires_at = ? where id = ?",
+        (hash_password(password, cost), expires_at, user_id),
+    )
+    connection.commit()
+
+
+def change_password(
+    connection: sqlite3.Connection, *, user_id: str, password: str, cost: int
+) -> None:
+    """The holder chose this one: the temporary flags clear with the hash, atomically."""
+    connection.execute(
+        "update users set password_hash = ?, must_change_password = 0,"
+        " temp_password_expires_at = null where id = ?",
+        (hash_password(password, cost), user_id),
+    )
+    connection.commit()
+
+
 def find_by_email(connection: sqlite3.Connection, email: str) -> sqlite3.Row | None:
     return connection.execute(
         "select * from users where email = ?", (normalise_email(email),)

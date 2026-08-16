@@ -81,7 +81,7 @@ def signed_in_client_with(monkeypatch, db_path, **overrides):
         name="Dispatcher",
         email="user@sgw.example",
         password=USER_PASSWORD,
-        role="user",
+        role="operator",
     )
     client = TestClient(application)
     sign_in(client, "user@sgw.example", USER_PASSWORD)

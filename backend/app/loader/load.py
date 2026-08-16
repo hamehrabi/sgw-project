@@ -114,6 +114,13 @@ def _read_assets(files: dict[str, bytes]) -> list[LoadedAsset]:
                 condition_source=source,
                 condition_observed_at=observed,
                 condition_estimated=defects.condition_is_estimated(source),
+                # Optional column (CHG-050). "1", "true" and "yes" are claims; everything
+                # else — including absence — reads as false, because critical is asserted,
+                # never defaulted.
+                is_critical_facility=(row.get("is_critical_facility") or "")
+                .strip()
+                .lower()
+                in ("1", "true", "yes"),
             )
         )
     return assets
@@ -261,8 +268,13 @@ def load_scenario(files: dict[str, bytes]) -> LoadResult:
         area["service_area_id"]: area["customer_count"]
         for area in manifest.get("service_areas", [])
     }
+    service_area_names = {
+        area["service_area_id"]: area["name"]
+        for area in manifest.get("service_areas", [])
+        if area.get("name")
+    }
 
-    assets = merge_by_site_and_name(_read_assets(files))
+    assets, match_candidates = merge_by_site_and_name(_read_assets(files))
     findings: list[Finding] = []
 
     for finding in (defects.unmatched_codes(assets), defects.stale_condition(assets)):
@@ -301,5 +313,11 @@ def load_scenario(files: dict[str, bytes]) -> LoadResult:
         outages=outages,
         failures=[o for o in outages if o.asset_external_id],
         service_areas=service_areas,
+        service_area_names=service_area_names,
         findings=findings,
+        match_candidates=match_candidates,
+        # CHG-051: the utility's own design basis, when the manifest states one. Read
+        # here, stored with the scenario, read by the scorer first — CHG-014's sourced
+        # table is the fallback, not the authority, the day the client supplies theirs.
+        design_references=manifest.get("design_references", {}),
     )

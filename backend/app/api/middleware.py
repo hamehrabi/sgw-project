@@ -26,6 +26,14 @@ PUBLIC_ROUTES = {
     ("POST", "/api/v1/auth/session"),
 }
 
+# What a signed-in holder of a temporary password may still do (CHG-053): learn who they
+# are, leave, and set the real password. Everything else answers 403 until they have.
+MUST_CHANGE_ALLOWED = {
+    ("GET", "/api/v1/auth/session"),
+    ("DELETE", "/api/v1/auth/session"),
+    ("POST", "/api/v1/auth/password"),
+}
+
 
 class RequestContext(BaseHTTPMiddleware):
     """A correlation id for every request, and a safe answer for an unexpected failure."""
@@ -89,6 +97,19 @@ class SessionGuard(BaseHTTPMiddleware):
         user = users.find_by_id(connection, session["user_id"])
         if user is None:
             return errors.not_authenticated()
+
+        # CHG-053: a temporary password buys exactly three things — learn who you are,
+        # leave, and set a real password. Enforced here, in the one check every request
+        # passes through, rather than by a redirect a browser could skip.
+        if user["must_change_password"] and (
+            request.method,
+            request.url.path,
+        ) not in MUST_CHANGE_ALLOWED:
+            return errors.error(
+                403,
+                "password_change_required",
+                "Set a new password before doing anything else.",
+            )
 
         sessions.touch(connection, session["id"], now)
         request.state.user = user

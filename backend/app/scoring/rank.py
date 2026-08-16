@@ -100,6 +100,9 @@ def _gust_vs_design(asset, reference) -> tuple[float, str]:
 FLOOD_ZONE_WORDS = {
     "VE": "Sits in a coastal high-hazard flood zone (VE) — exposed to storm surge and waves.",
     "AE": "Sits inside the mapped 100-year floodplain (zone AE).",
+    "A": "Sits inside the mapped 100-year floodplain (zone A).",
+    "AO": "Sits inside the mapped 100-year floodplain (zone AO — shallow sheet flow).",
+    "AH": "Sits inside the mapped 100-year floodplain (zone AH — shallow ponding).",
     "X": "Sits outside the mapped floodplain (zone X).",
 }
 
@@ -107,10 +110,17 @@ FLOOD_ZONE_WORDS = {
 def _flood_zone(asset) -> tuple[float, str]:
     zone = (asset.flood_zone or "").strip().upper()
     if zone not in ref.FLOOD_ZONE_EXPOSURE:
-        # Not defaulted. Guessing an exposure is how a coastal asset ranks like an inland one.
-        raise Unscorable(
-            f"its flood zone is recorded as {asset.flood_zone or 'blank'!r}, which this rule "
-            f"does not recognise ({', '.join(sorted(ref.FLOOD_ZONE_EXPOSURE))})"
+        # CHG-042: scored at the minimal value, and SAID. A blank zone is still a refusal
+        # to score — nothing was recorded, which is a missing input, not an odd code.
+        if not zone:
+            raise Unscorable("its flood zone is blank, so its flood exposure is unknown")
+        # Not a guess dressed as knowledge: the sentence names the code and the fact that
+        # the rule did not recognise it, so "minimal" cannot read as "safe" (FTEST-004's
+        # concern, kept — the honesty moved from an UNSCORED row into the reason).
+        return (
+            ref.FLOOD_ZONE_UNRECOGNISED_EXPOSURE,
+            f"Flood zone code {zone!r} was not recognised — scored at minimal flood risk "
+            f"until somebody determines it.",
         )
     return ref.FLOOD_ZONE_EXPOSURE[zone], FLOOD_ZONE_WORDS[zone]
 

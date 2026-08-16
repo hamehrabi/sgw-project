@@ -28,7 +28,10 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent
 BACKEND = ROOT / "backend" / "app"
 FRONTEND = ROOT / "frontend"
 
-MODULES = ("api", "scoring", "loader", "store")
+# `summary` joined with CHG-052, in the same commit that created the directory: a package
+# absent from this tuple is a package FF-001 cannot see, so a cycle through it would be
+# invisible to the gate that exists to refuse cycles (CHG-010's finding, pre-empted).
+MODULES = ("api", "scoring", "loader", "store", "summary")
 
 # ADR-007's numbers. None of them may appear in the frontend: the scoring module is never
 # "reimplemented, mirrored, or partially duplicated in the frontend for display purposes"
@@ -175,6 +178,12 @@ def _loaded_and_ranked(tmp):
         DATABASE_PATH=str(tmp / "gate.db"), SCENARIO_UPLOAD_DIR=str(tmp / "scenarios"),
         SCENARIO_MAX_FILE_BYTES="8388608", SCENARIO_MAX_TOTAL_BYTES="10485760",
         SCENARIO_PARSE_TIMEOUT_SECONDS="120", SCENARIO_STALE_AFTER_HOURS="6",
+        TEMP_PASSWORD_EXPIRY_HOURS="24",
+        SAMPLE_SCENARIO_DIR=str(
+            ROOT / "spec" / "03-tests" / "05-executable" / "fixtures" / "storm-with-seven-defects"
+        ),
+        # Off in the gate: nothing this script drives may reach outside the machine.
+        LLM_ENABLED="false",
     )
     from app.main import create_app
     from app.store import users

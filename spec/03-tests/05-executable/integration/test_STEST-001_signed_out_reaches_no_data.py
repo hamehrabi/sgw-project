@@ -28,6 +28,25 @@ DATA_ROUTES = [
     ("POST", "/api/v1/scenarios/SCEN-1/placements"),
     ("POST", "/api/v1/recommendations/REC-1/decision"),
     ("POST", "/api/v1/damage-reports/DR-1/dismiss"),
+    # The interface rebuild's nine capabilities (CHG-040..CHG-054). Every one is data or
+    # a decision about data, so every one is behind the guard, and every one is named
+    # here because the enumeration below fails this file the day one is added unnamed.
+    ("GET", "/api/v1/scenarios/SCEN-1/findings"),
+    ("POST", "/api/v1/scenarios/SCEN-1/findings/resolve"),
+    ("GET", "/api/v1/scenarios/SCEN-1/matches"),
+    ("POST", "/api/v1/scenarios/SCEN-1/matches/resolve"),
+    ("GET", "/api/v1/scenarios/SCEN-1/staging"),
+    ("POST", "/api/v1/scenarios/SCEN-1/staging"),
+    ("GET", "/api/v1/scenarios/SCEN-1/summary"),
+    ("POST", "/api/v1/scenarios/SCEN-1/summary/draft"),
+    ("POST", "/api/v1/scenarios/SCEN-1/summary/approve"),
+    ("POST", "/api/v1/scenarios/SCEN-1/summary/send"),
+    ("GET", "/api/v1/scenarios/SCEN-1/activity"),
+    ("GET", "/api/v1/scenarios/SCEN-1/movement"),
+    ("POST", "/api/v1/scenarios/sample"),
+    # The password change is auth rather than data, and it is guarded too: it is the one
+    # route a temporary-password holder may reach, not a route a signed-out caller may.
+    ("POST", "/api/v1/auth/password"),
 ]
 
 # Reachable without a session, and each for a stated reason: the health check has to answer

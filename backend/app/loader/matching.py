@@ -54,13 +54,25 @@ def site_key(asset: LoadedAsset) -> tuple:
     )
 
 
-def merge_by_site_and_name(assets: list[LoadedAsset]) -> list[LoadedAsset]:
-    """Return one record per physical asset, flagging what could not be resolved."""
+def merge_by_site_and_name(
+    assets: list[LoadedAsset],
+) -> tuple[list[LoadedAsset], list[dict]]:
+    """Return one record per physical asset, flagging what could not be resolved —
+    **and both sides of everything withheld** (CHG-048).
+
+    The second list is the review queue's content: `needs_review` on an asset says a
+    person is owed a look, and used to say nothing about what they were owed a look AT.
+    Each entry pairs one withheld record with the site-mate it was nearly merged with, in
+    the shape the drawer renders. Confidence is a word and never a percentage: the rule is
+    a position threshold and a name comparison, and dressing that as 87% would invent a
+    precision the arithmetic does not have.
+    """
     by_site: dict[tuple, list[LoadedAsset]] = {}
     for asset in assets:
         by_site.setdefault(site_key(asset), []).append(asset)
 
     resolved: list[LoadedAsset] = []
+    withheld: list[dict] = []
     for candidates in by_site.values():
         if len(candidates) == 1:
             resolved.append(candidates[0])
@@ -77,11 +89,40 @@ def merge_by_site_and_name(assets: list[LoadedAsset]) -> list[LoadedAsset]:
 
         # One site, names that disagree. A near match below the bar: surface every record
         # to a person rather than choosing between them.
+        anchor = candidates[0]
         for candidate in candidates:
             candidate.match_status = "needs_review"
             resolved.append(candidate)
+            if candidate is not anchor:
+                withheld.append(
+                    {
+                        # Keyed to the anchor's first code: save_loaded_scenario resolves
+                        # this to the stored asset id, so the queue row belongs to a row
+                        # a reviewer can act on.
+                        "anchor_code": anchor.external_ids[0],
+                        "map_record": _card(anchor),
+                        "candidate_record": _card(candidate),
+                        # Same type AND same position to ~11 m — that is what put the
+                        # two at one site. "high" is the only grade this rule can honestly
+                        # give; a weaker rule would need a weaker word, not a number.
+                        "confidence": "high",
+                    }
+                )
 
-    return resolved
+    return resolved, withheld
+
+
+def _card(asset: LoadedAsset) -> dict:
+    """One side of a comparison, in the fields the drawer shows. No coordinate leaves
+    here beyond what the registry itself carries."""
+    return {
+        "id": asset.external_ids[0],
+        "name": asset.name,
+        "type": asset.type,
+        "condition": asset.condition,
+        "condition_observed_at": asset.condition_observed_at,
+        "install_year": asset.install_year,
+    }
 
 
 def _merged(candidates: list[LoadedAsset]) -> LoadedAsset:

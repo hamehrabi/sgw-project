@@ -120,7 +120,7 @@ def test_the_response_says_its_numbers_are_uncalibrated(client, accounts):
 
 def test_a_user_role_sees_the_same_ranking_as_an_admin(client, accounts):
     """Every role sees the same ranking; deciding is the product, not a privilege."""
-    _, body = load_and_rank(client, accounts, as_role="user")
+    _, body = load_and_rank(client, accounts, as_role="operator")
 
     assert body["items"]
 

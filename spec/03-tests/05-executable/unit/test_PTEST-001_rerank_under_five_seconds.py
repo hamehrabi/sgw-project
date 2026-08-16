@@ -197,6 +197,7 @@ def test_applying_a_forecast_change_through_the_endpoint_is_inside_the_limit(
 
 
 ROW_INSERT = "insert into risk_scores"
+MOVEMENT_INSERT = "insert into rank_movement"
 
 
 def test_the_rerank_reads_and_moves_the_pointer_in_a_constant_number_of_statements(
@@ -248,8 +249,19 @@ def test_the_rerank_reads_and_moves_the_pointer_in_a_constant_number_of_statemen
         "the write is not one row per asset"
     )
 
-    around_small = [sql for sql in small if ROW_INSERT not in sql]
-    around_large = [sql for sql in large if ROW_INSERT not in sql]
+    # CHG-044's second per-asset write class, named rather than lumped into the constant
+    # set: `rank_movement` legitimately writes one row per asset whose rank moved, so it
+    # scales with the input the same way the score rows do. It is asserted present —
+    # a re-rank that stopped recording movement would be the strip lying by omission —
+    # and excluded from the constant comparison below for the same reason ROW_INSERT is.
+    assert any(MOVEMENT_INSERT in sql for sql in large), "no movement rows were written"
+
+    around_small = [
+        sql for sql in small if ROW_INSERT not in sql and MOVEMENT_INSERT not in sql
+    ]
+    around_large = [
+        sql for sql in large if ROW_INSERT not in sql and MOVEMENT_INSERT not in sql
+    ]
     assert len(around_large) == len(around_small), (
         f"{len(around_small)} statements around the write at 110 assets and "
         f"{len(around_large)} at 220 — the re-rank is querying inside a loop"

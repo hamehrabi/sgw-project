@@ -1354,7 +1354,7 @@ def test_the_dismissal_and_its_record_survive_a_restart(tmp_path, monkeypatch):
         name="Dispatcher",
         email="user@sgw.example",
         password=USER_PASSWORD,
-        role="user",
+        role="operator",
     )
     first.state.db.execute(
         "insert into scenarios (id, name, source_note, content_key, loaded_by, loaded_at,"

@@ -42,7 +42,7 @@ def an_account(application):
         name="Dispatcher",
         email="user@sgw.example",
         password=USER_PASSWORD,
-        role="user",
+        role="operator",
     )
 
 

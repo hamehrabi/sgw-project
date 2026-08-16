@@ -19,7 +19,7 @@ from app.config import ConfigError, load_config
 from app.envfile import load_env_file
 from app.store import db, migrate, users
 
-ROLES = ("admin", "user")
+ROLES = ("admin", "operator")
 
 
 def read_password(prompt: str) -> str:
@@ -69,6 +69,40 @@ def create_user_command(arguments) -> int:
     return 0
 
 
+def set_temp_password_command(arguments) -> int:
+    """CHG-004's admin-set temporary password, with CHG-053's two properties: it expires
+    after TEMP_PASSWORD_EXPIRY_HOURS, and its holder must replace it at first sign-in
+    before any other route answers."""
+    from datetime import UTC, datetime, timedelta
+
+    config = load_config()
+    connection = db.connect(config.database_path)
+    migrate.run(connection)
+
+    row = users.find_by_email(connection, arguments.email)
+    if row is None:
+        print("No account carries that address. Nothing was changed.", file=sys.stderr)
+        return 1
+
+    password = read_password("Temporary password: ")
+    if len(password) < 12:
+        print("Use at least 12 characters. Nothing was changed.", file=sys.stderr)
+        return 1
+
+    expires = datetime.now(UTC) + timedelta(hours=config.temp_password_expiry_hours)
+    users.set_temporary_password(
+        connection,
+        user_id=row["id"],
+        password=password,
+        cost=config.password_hash_cost,
+        expires_at=expires.isoformat(),
+    )
+    print(
+        f"Set. It expires {expires.isoformat()} and must be replaced at first sign-in."
+    )
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="app.cli", description=__doc__)
     commands = parser.add_subparsers(dest="command", required=True)
@@ -78,6 +112,12 @@ def build_parser() -> argparse.ArgumentParser:
     create.add_argument("--email", required=True)
     create.add_argument("--role", required=True, choices=ROLES)
     create.set_defaults(handler=create_user_command)
+
+    temp = commands.add_parser(
+        "set-temp-password", help="Issue a temporary password that must be replaced."
+    )
+    temp.add_argument("--email", required=True)
+    temp.set_defaults(handler=set_temp_password_command)
 
     return parser
 

@@ -180,6 +180,15 @@ def damage_report_item(row) -> dict:
         "reported_at": row["reported_at"],
         "reported_by": row["reported_by"],
         "status": row["status"],
+        # CHG-050's two impact facts. Guarded by key because the dismissal path reads the
+        # report alone, without the board's asset join. `.keys()` is the sqlite3.Row
+        # membership idiom, not a dict anti-pattern: `in row` is a TypeError.
+        "customers_out": (
+            row["customers_out"] if "customers_out" in row.keys() else None  # noqa: SIM118
+        ),
+        "asset_is_critical": bool(
+            row["asset_is_critical"] if "asset_is_critical" in row.keys() else 0  # noqa: SIM118
+        ),
     }
 
 
@@ -237,6 +246,18 @@ def repair_job_item(job_row, filed: list[dict]) -> dict:
     No rank, no score, no band.
     """
     working = [report for report in filed if report["status"] != DISMISSED]
+    # CHG-050: priority is derived from IMPACT — what has already happened — and never
+    # from a risk score. Two facts decide it: a critical facility among the open reports'
+    # assets, and the customers those reports account for. The scorer is not consulted,
+    # `priority_rank` stays null, and the vocabulary is the frozen one: High/Medium/Low,
+    # never "Critical", never "Standard".
+    customers = sum(report["customers_out"] or 0 for report in working)
+    if any(report["asset_is_critical"] for report in working):
+        priority = "High"
+    elif customers >= dispatch.IMPACT_CUSTOMERS_MEDIUM_AT:
+        priority = "Medium"
+    else:
+        priority = "Low"
     return {
         "job_id": job_row["id"],
         "status": job_row["status"],
@@ -247,6 +268,8 @@ def repair_job_item(job_row, filed: list[dict]) -> dict:
         "updated_at": job_row["updated_at"],
         "report_count": len(working),
         "dismissed_report_count": len(filed) - len(working),
+        "priority": priority,
+        "customers_out": customers,
         "reports": working,
     }
 
@@ -274,6 +297,10 @@ def board_body(scenario_id: str, jobs, reports) -> dict:
         grouped.setdefault(row["repair_job_id"], []).append(damage_report_item(row))
 
     items = [repair_job_item(job, grouped.get(job["id"], [])) for job in jobs]
+    # CHG-050: the queue is ordered by impact — High first — and by arrival within a
+    # band, which the stable sort preserves because `jobs` arrives seq-ordered. This is
+    # impact order, not risk order: nothing from risk_scores touched any of these rows.
+    items.sort(key=lambda item: {"High": 0, "Medium": 1, "Low": 2}[item["priority"]])
 
     # The `None` bucket, read rather than dropped. Split the same way a job's reports are, so a
     # dismissed unattached report is explained rather than merely gone.
@@ -290,6 +317,92 @@ def board_body(scenario_id: str, jobs, reports) -> dict:
         "dismissed_report_count": (
             sum(item["dismissed_report_count"] for item in items) + unattached_dismissed
         ),
+    }
+
+
+def finding_item(row) -> dict:
+    """One data-quality finding (CHG-047), exactly as stored at load."""
+    return {
+        "finding_id": row["id"],
+        "defect": row["defect"],
+        "code": row["code"],
+        "subject": row["subject"],
+        "message": row["message"],
+        "affected_file": row["affected_file"],
+        "needs_decision": bool(row["needs_decision"]),
+        "resolution": row["resolution"],
+        "resolved_by": row["resolved_by"],
+        "resolved_at": row["resolved_at"],
+    }
+
+
+def match_candidate_item(row) -> dict:
+    """One withheld merge (CHG-048). Confidence is a word, never a percentage."""
+    return {
+        "candidate_id": row["id"],
+        "asset_id": row["asset_id"],
+        "map_record": json.loads(row["map_record"]),
+        "candidate_record": json.loads(row["candidate_record"]),
+        "confidence": row["confidence"],
+        "resolution": row["resolution"],
+        "resolved_by": row["resolved_by"],
+        "resolved_at": row["resolved_at"],
+    }
+
+
+def staging_body(scenario_id: str, areas, plan, high_count: int) -> dict:
+    """The staging panel (CHG-049). No per-depot recommendation — none can be defended
+    without an asset-to-area mapping the format does not carry. The high-band count is
+    context, read from the stored ranking, and it recommends nothing."""
+    recorded = json.loads(plan["depots"]) if plan else []
+    counts = {depot["service_area_id"]: depot.get("crews", 0) for depot in recorded}
+    return {
+        "scenario_id": scenario_id,
+        "depots": [
+            {
+                "service_area_id": area["service_area_id"],
+                "name": area["name"] or area["service_area_id"],
+                "customer_count": area["customer_count"],
+                "crews": counts.get(area["service_area_id"], 0),
+            }
+            for area in areas
+        ],
+        "high_risk_count": high_count,
+        "recorded_at": plan["created_at"] if plan else None,
+        "recorded_by": plan["actor_user_id"] if plan else None,
+        "forecast_revision": plan["forecast_revision"] if plan else None,
+    }
+
+
+def summary_item(row) -> dict:
+    """One situation summary (CHG-040), verification and all. The label travels with the
+    text so a reader can always tell a model draft from assembled figures."""
+    return {
+        "summary_id": row["id"],
+        "scenario_id": row["scenario_id"],
+        "state": row["state"],
+        "draft_text": row["draft_text"],
+        "approved_text": row["approved_text"],
+        "label": row["label"],
+        "source_figures": json.loads(row["source_figures"]),
+        "verification": json.loads(row["verification"]),
+        "drafted_at": row["drafted_at"],
+        "drafted_by": row["drafted_by"],
+        "approved_by": row["approved_by"],
+        "approved_at": row["approved_at"],
+    }
+
+
+def movement_item(row) -> dict:
+    """One riser from the stored diff (CHG-044)."""
+    return {
+        "asset_id": row["asset_id"],
+        "previous_rank": row["previous_rank"],
+        "current_rank": row["current_rank"],
+        "band": row["band"],
+        "reason_factor": row["reason_factor"],
+        "reason_detail": row["reason_detail"],
+        "previous_label": row["previous_label"],
     }
 
 

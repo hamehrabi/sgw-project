@@ -13,7 +13,7 @@ from fastapi.responses import JSONResponse
 
 from app.api import errors, rerank, uploads, views
 from app.api.events import log_event
-from app.store import decisions, forecasts, rankings, scenarios
+from app.store import decisions, forecasts, rankings, scenarios, security
 
 router = APIRouter(prefix="/api/v1/scenarios", tags=["scenarios"])
 
@@ -39,7 +39,8 @@ async def load_scenario(
     connection = request.app.state.db
 
     if not _is_admin(request):
-        # AC-009's record, in the security log (CHG-015). Actor, time, filename, reason.
+        # AC-009's record, in the security log (CHG-015; the table itself is CHG-046).
+        # Actor, time, filename, reason.
         #
         # **Not in `decision_records`.** That table holds decisions about recommendations, and
         # a refused upload is an access-control event rather than a decision. Putting it there
@@ -54,6 +55,12 @@ async def load_scenario(
             filenames=[file.filename for file in files],
             reason="not_admin",
             outcome="refused",
+        )
+        security.log(
+            connection,
+            event="upload_refused",
+            detail=f"upload of {len(files)} file(s) refused: not an admin",
+            actor_user_id=request.state.user["id"],
         )
         # Generic, and deliberately uninformative: it does not reveal whether the upload
         # endpoint exists or what it accepts (`security-specification.md` §7).
@@ -144,6 +151,105 @@ async def load_scenario(
             },
         )
 
+    return JSONResponse(
+        status_code=201, content={"scenario_id": scenario_id, "forecast_revision": 0}
+    )
+
+
+@router.post("/sample")
+async def load_sample_scenario(request: Request) -> JSONResponse:
+    """"Use sample storm data" — the same parse path as a real upload, not a shortcut.
+
+    The files come from `SAMPLE_SCENARIO_DIR` instead of the request body, and from there
+    on nothing differs: the same content checks, the same seven defect rules, the same
+    ranking at load, the same idempotent replace on identical content. The quality
+    summary that renders afterwards is measured from this parse, never hard-coded.
+
+    Admin only, exactly as the upload it is a stand-in for.
+    """
+    import pathlib
+
+    config = request.app.state.config
+    connection = request.app.state.db
+
+    if not _is_admin(request):
+        log_event(
+            "SCENARIO_UPLOAD_REFUSED",
+            level=logging.WARNING,
+            user_id=request.state.user["id"],
+            role=request.state.user["role"],
+            reason="not_admin",
+            outcome="refused",
+        )
+        return uploads.refuse(403, "You do not have permission to perform this action.")
+
+    directory = pathlib.Path(config.sample_scenario_dir)
+    if not directory.is_dir():
+        return errors.error(
+            422,
+            "sample_unavailable",
+            "The sample dataset is not on disk. Set SAMPLE_SCENARIO_DIR to a prepared scenario.",
+        )
+    supplied = {path.name: path.read_bytes() for path in directory.iterdir() if path.is_file()}
+
+    refusal = uploads.check_upload(supplied, config)
+    if refusal:
+        status, message = refusal
+        return uploads.refuse(status, message)
+
+    key = uploads.content_key(supplied)
+    existing = scenarios.find_by_content_key(connection, key)
+    if existing:
+        return JSONResponse(
+            status_code=200,
+            content={
+                "scenario_id": existing["id"],
+                "forecast_revision": existing["forecast_revision"],
+            },
+        )
+
+    # The storm names itself from its own manifest — nobody typed anything.
+    import json as _json
+
+    try:
+        manifest = _json.loads(supplied.get("manifest.json", b"{}").decode("utf-8-sig"))
+    except (ValueError, UnicodeDecodeError):
+        manifest = {}
+    stored_name = scenarios.storm_text(
+        str(manifest.get("storm_name") or "Sample storm"), scenarios.NAME_MAX
+    )
+    stored_note = scenarios.storm_text("Bundled sample dataset", scenarios.SOURCE_NOTE_MAX)
+
+    stored = uploads.store_files(supplied, config)
+    upload_id = scenarios.start_upload(
+        connection,
+        uploaded_by=request.state.user["id"],
+        name=stored_name,
+        source_note=stored_note,
+        storage_path=str(stored),
+    )
+    scenario_id = uploads.run_parse(
+        connection,
+        upload_id,
+        stored,
+        supplied,
+        name=stored_name,
+        source_note=stored_note,
+        content_key=key,
+        actor_id=request.state.user["id"],
+    )
+    if scenario_id is None:
+        upload = scenarios.find_upload(connection, upload_id)
+        return JSONResponse(
+            status_code=422,
+            content={
+                "code": "scenario_parse_failed",
+                "message": (
+                    f"{upload['failed_file']} could not be read: {upload['failed_reason']}. "
+                    f"No scenario was created."
+                ),
+            },
+        )
     return JSONResponse(
         status_code=201, content={"scenario_id": scenario_id, "forecast_revision": 0}
     )
@@ -240,6 +346,16 @@ async def apply_forecast_revision(request: Request, scenario_id: str) -> JSONRes
     revision = following["forecast_revision"]
     scoring = rerank.score_revision(connection, scenario_id, revision)
 
+    # CHG-044: the strip's rows are the diff of this pass against the ranking it
+    # supersedes, computed before the write and stored inside it — a revision whose
+    # ranking exists but whose movement does not is a strip lying by omission.
+    moved = rerank.movement_between(connection, scenario_id, current, scoring)
+    previous_row = connection.execute(
+        "select valid_time from scenario_forecast_revisions"
+        " where scenario_id = ? and forecast_revision = ?",
+        (scenario_id, current),
+    ).fetchone()
+
     try:
         computed_at = rankings.save_revision(
             connection,
@@ -248,6 +364,12 @@ async def apply_forecast_revision(request: Request, scenario_id: str) -> JSONRes
             to_revision=revision,
             ranked=scoring.pairs,
             weight_set_version=scoring.weight_set_version,
+            movement_rows=moved,
+            movement_label=(
+                f"the {previous_row['valid_time']} forecast"
+                if previous_row
+                else f"revision {current}"
+            ),
         )
     except Exception:
         # Neither the ranking nor the pointer moved — `save_revision` is one transaction. The
@@ -331,6 +453,12 @@ async def read_decisions(request: Request, scenario_id: str):
             level=logging.WARNING,
             user_id=request.state.user["id"],
             outcome="refused",
+        )
+        security.log(
+            request.app.state.db,
+            event="permission_denied",
+            detail="decision record read refused: not an admin",
+            actor_user_id=request.state.user["id"],
         )
         return errors.error(403, "forbidden", "You do not have permission to perform this action.")
 

@@ -37,6 +37,11 @@ os.environ.update(
     SCENARIO_MAX_TOTAL_BYTES="10485760",
     SCENARIO_PARSE_TIMEOUT_SECONDS="120",
     SCENARIO_STALE_AFTER_HOURS="6",
+    TEMP_PASSWORD_EXPIRY_HOURS="24",
+    SAMPLE_SCENARIO_DIR=str(
+        ROOT / "spec" / "03-tests" / "05-executable" / "fixtures" / "storm-with-seven-defects"
+    ),
+    LLM_ENABLED="false",
 )
 
 from app.config import load_config  # noqa: E402
@@ -47,7 +52,7 @@ connection = db.connect(config.database_path)
 migrate.run(connection)
 for name, email, role in (
     ("Ops Manager", "ops@sgw.example", "admin"),
-    ("Dispatcher", "dispatch@sgw.example", "user"),
+    ("Dispatcher", "dispatch@sgw.example", "operator"),
 ):
     users.create_user(
         connection, name=name, email=email, password=E2E_PASSWORD, role=role, cost=4

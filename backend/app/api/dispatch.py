@@ -42,6 +42,9 @@ class DamageReport(BaseModel):
 
     neighbourhood: str
     asset_id: str | None = None
+    # CHG-050: how many customers this call accounts for, when the caller can say. Absent
+    # is "did not say", which is not zero (defect 4's lesson, at the reporting boundary).
+    customers_out: int | None = None
 
 
 @router.post("/{scenario_id}/damage-reports", status_code=201)
@@ -69,6 +72,11 @@ async def file_damage_report(
             "address (CON-003).",
         )
 
+    if body.customers_out is not None and body.customers_out < 0:
+        return errors.error(
+            400, "validation_error", "A customer count cannot be negative."
+        )
+
     if body.asset_id and not scenarios.find_asset(connection, scenario_id, body.asset_id):
         # Refused rather than stored as null: at load, an unmatched report keeps its null
         # `asset_id` because nobody is there to correct it. Here somebody is.
@@ -88,6 +96,7 @@ async def file_damage_report(
             neighbourhood=neighbourhood,
             asset_id=body.asset_id,
             reported_by=actor["id"],
+            customers_out=body.customers_out,
         )
     except Exception:
         log_event(
@@ -121,9 +130,11 @@ async def file_damage_report(
 async def read_board(request: Request, scenario_id: str):
     """One shared list of damage reports and repair jobs (REQ-F-007).
 
-    Ordered by when the work arrived, and by nothing else. **A rank, a score or a band must
-    never order this list**: criticality badges the dispatch queue, risk orders the planning
-    list, and folding one into the other is how a computed number starts moving crews.
+    Ordered by **impact** — a critical facility first, then customers accounted for, then
+    arrival (CHG-050). **A rank, a score or a band must never order this list**: impact is
+    what has already happened, risk is a forecast about what might, and folding the second
+    into this queue is how a computed number starts moving crews. `priority_rank` is null
+    and stays null; the scorer is not consulted anywhere beneath this route.
     """
     connection = request.app.state.db
     if scenarios.find(connection, scenario_id) is None:

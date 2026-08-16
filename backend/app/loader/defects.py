@@ -68,6 +68,7 @@ def unmatched_codes(assets) -> Finding | None:
     names = ", ".join(sorted(code for a in flagged for code in a.external_ids))
     return Finding(
         defect=1,
+        affected_file="assets.csv",
         code="ASSET_CODES_UNRESOLVED",
         subject=names,
         message=(
@@ -85,6 +86,7 @@ def stale_condition(assets, *, stale_after_days: int = 365) -> Finding | None:
     oldest = min(dated, key=lambda a: a.condition_observed_at)
     return Finding(
         defect=2,
+        affected_file="assets.csv",
         code="CONDITION_DATA_OLD",
         subject=", ".join(oldest.external_ids),
         message=(
@@ -106,6 +108,7 @@ def gusts_absent_from_station_rows(station_rows: int, station_values: int) -> Fi
         return None
     return Finding(
         defect=3,
+        affected_file="weather.csv",
         code="STATION_GUSTS_ABSENT",
         subject="weather.csv",
         message=(
@@ -120,6 +123,7 @@ def broken_total(asset_code: str | None, service_area_id: str | None) -> Finding
     subject = asset_code or f"area {service_area_id}"
     return Finding(
         defect=4,
+        affected_file="outages.csv",
         code="OUTAGE_TOTAL_BROKEN",
         subject=subject,
         message=(
@@ -134,6 +138,7 @@ def impossible_count(asset_code: str | None, area: str, out: int, population: in
     subject = asset_code or f"area {area}"
     return Finding(
         defect=5,
+        affected_file="outages.csv",
         code="OUTAGE_COUNT_IMPOSSIBLE",
         subject=subject,
         message=(
@@ -149,6 +154,7 @@ def repair_rows_excluded(count: int, subjects: list[str]) -> Finding | None:
         return None
     return Finding(
         defect=6,
+        affected_file="maintenance.csv",
         code="REPAIR_ROWS_NOT_FAILURES",
         subject=", ".join(sorted(subjects)),
         message=(
@@ -164,6 +170,7 @@ def area_level_only(count: int) -> Finding | None:
         return None
     return Finding(
         defect=7,
+        affected_file="outages.csv",
         code="OUTAGE_AREA_LEVEL_ONLY",
         subject="outages.csv",
         message=(

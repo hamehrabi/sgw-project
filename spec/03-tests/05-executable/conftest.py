@@ -38,6 +38,14 @@ TEST_ENV = {
     "SCENARIO_MAX_TOTAL_BYTES": "16384",
     "SCENARIO_PARSE_TIMEOUT_SECONDS": "120",
     "SCENARIO_STALE_AFTER_HOURS": "6",
+    # CHG-053: a temporary password's lifetime, read and never defaulted like ADR-006's two.
+    "TEMP_PASSWORD_EXPIRY_HOURS": "24",
+    # The sample-data button loads this through the same parse path as a real upload.
+    "SAMPLE_SCENARIO_DIR": str(FIXTURES / "storm-with-seven-defects"),
+    # Off in the suite: the tests that exercise the draft path monkeypatch the transport,
+    # and nothing in this suite may reach outside the machine (CHG-040's verifier is pure
+    # and is tested against strings).
+    "LLM_ENABLED": "false",
 }
 
 ADMIN_PASSWORD = "correct-horse-battery-staple"
@@ -88,7 +96,7 @@ def accounts(application):
         conn, name="Ops Manager", email="admin@sgw.example", password=ADMIN_PASSWORD, role="admin"
     )
     user_id = users.create_user(
-        conn, name="Dispatcher", email="user@sgw.example", password=USER_PASSWORD, role="user"
+        conn, name="Dispatcher", email="user@sgw.example", password=USER_PASSWORD, role="operator"
     )
     return {
         "admin": {"id": admin_id, "email": "admin@sgw.example", "password": ADMIN_PASSWORD},

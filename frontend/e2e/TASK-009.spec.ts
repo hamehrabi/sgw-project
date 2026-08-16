@@ -308,7 +308,7 @@ test('a non-admin is told there is no storm without being pointed at a panel the
   await signIn(page, 'dispatch@sgw.example')
 
   const switcher = page.getByTestId('scenario-switcher')
-  await expect(page.getByTestId('role')).toHaveText('user')
+  await expect(page.getByTestId('role')).toHaveText('operator')
   await expect(switcher).toContainText('No storm loaded yet')
   await expect(switcher).not.toContainText('Load a prepared storm')
 })
