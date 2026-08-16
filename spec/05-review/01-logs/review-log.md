@@ -37,7 +37,161 @@
 
 | 2026-08-16 | **TASK-010 output** — `ci/fitness.py` (FF-003 in two halves, the `OpenProbe` recorder, the route walk, the two vacuity guards), `fitness-functions.md`'s FF-003 row and its two paragraphs, `cicd-pipeline.md` stage 4, `TASK-010.md` | TASK-010 / FF-003, REQ-NF-003, AC-002, AC-010, CHG-013, CHG-038 | The developer (**also the author** — same Q-026 conflict, eleventh time) | Requirement fit · Architecture fit · Test evidence · Change scope | **The task was set as a question — can clause (c) be wired as a check that could really fail — and the answer is yes, in both processes.** A `fs.readFileSync` in `app/page.tsx`, which is a server component and a real Next.js render path, leaves `tsc`, `lint`, `build` and all **36** browser specs green; `views.integrity()` reading `manifest.json` on the render path of `GET /scenarios/{id}` leaves all **534** tests green. Both are red at the gate. **Clause (a) is failable too, and not in the sense CHG-013 examined**: its original reading — a screen breaks for want of a file — still cannot happen, but `if not integrity["intact"]: rows = []` in the ranking read empties the risk list on a lost file with the whole suite green, which is the empty screen CLAUDE.md forbids reading as safety, and clause (b) is what makes the removal observable enough to catch it. **Eight mutations, each applied, run, and reverted**, with `git status --short` checked after each; three of them are mutations of the check's own guards, because a canary that cannot be seen to fail is the same decoration as the gate it protects. **No application file was changed by this task.** One specification gap raised and left **proposed**: **CHG-038** — the register does not decide what *open every screen* means across a process line, how clause (a) is measured, or whether a `stat` is a read; left undecided, (b) and (c) contradict each other, because the notice (b) requires cannot be produced without looking at the filesystem (c) is read as forbidding. | **Accept** | CHG-038 and the twenty-two entries before it need a human decision; a later reviewer should start where this round is weakest — the frontend half of (c) is a text scan, and the picture comparison strips `integrity`, whose shape is asserted separately and only at baseline |
 
+| 2026-08-16 | **TASK-005 re-reviewed after its second remediation**, against its own done criteria — migrations 007, 008 and 009, `store/dispatch.py`, `api/dispatch.py`, `api/views.py`, `DispatchBoard.tsx` and the five executable files including `e2e/ATEST-007.spec.ts` | TASK-005 / REQ-F-007, REQ-NF-007, AC-007, ADR-002, CHG-018, CHG-023 | A fourth agent run, which **neither wrote, fixed nor previously reviewed** TASK-005 — but author, both fixers and all three reviewers are the same process (**Q-026**, see the note below) | Requirement fit · Architecture fit · Security & validation · Test evidence · Change scope | **The full gate is green and the directed check held.** `pytest` 634 + **0** skipped, `ruff`, `ci/fitness.py` **7 of 7 wired**, `ci/evals.py`, `tsc`, `lint`, `build`, all 36 Playwright specs, and `ci/gate.sh` — which did not exist before this round. The check was *which refusal, not how many* — the discipline `AGENT.md` recorded against `POST /placements` and has never carried to this task's endpoints. Mutation: delete the unknown-storm lookup from `file_damage_report`. **1** test red, and it is the one that names the rule, so the store-vs-service half holds. **One observation, fixed in place rather than raised:** `test_an_unknown_storm_is_404_rather_than_a_new_board` asserted `status_code == 404` and nothing else. It went red under the mutation only because the request fell through to a `500`; it went red for the crash, not for the rule, and the next refusal added to that endpoint would have made it unfailable without anybody touching it. It now reads the `code` and the sentence. The third remediation's own findings were re-read and nothing contradicts them. **No finding requires a specification decision, so no change entry is raised against this task.** | **Accept** | The twenty-three entries proposed before this round, and CHG-039, still need a human decision |
+
+| 2026-08-16 | **TASK-006 re-reviewed after remediation**, against its own done criteria — migrations 010 and 011, `store/forecasts.py`, `store/rankings.py`, `api/rerank.py`, `api/views.py`, `ForecastRevisionControl.tsx`, `ScenarioView.tsx`, the reordered fixture and the five executable files | TASK-006 / REQ-F-004, AC-005, ADR-002, CHG-025…CHG-028 | The same fourth run, which **neither wrote nor fixed** TASK-006 and did not review it before (**Q-026**) | Requirement fit · Architecture fit · Security & validation · Test evidence · Change scope | **The full gate is green and the directed check held.** The check was aimed at CHG-027, which is the remediation's own newest claim and therefore its least-tested one: *`ranked` is read out of `risk_scores` and never inferred from `scenarios.forecast_revision`* — the entry says in writing that the pointer is one number, the rankings are the fact, and the two can disagree. Mutation: replace the `exists (select 1 from risk_scores …)` subquery in `forecasts.revisions` with `r.forecast_revision <= (select forecast_revision from scenarios …)`, which is the pointer-based inference the entry declines and the obvious cheaper spelling. **1** test red — `test_ranked_is_read_from_the_stored_rankings_and_not_from_the_pointer` — so the claim is held down by the assertion written for it and not by the absence of anyone trying. The reordered fixture, the restart case that now compares the whole ranking, and the first browser case for `ForecastRevisionControl` were re-read and stand as the remediation describes them. **No finding, and no change entry.** | **Accept** | CHG-025…CHG-028 remain proposed; a later reader should start at `scenarios.forecast_revision`, which can still be moved directly to a revision nothing ranked — CHG-027 makes the screen disbelieve the pointer rather than making the pointer true |
+
+| 2026-08-16 | **TASK-007 output, reviewed against its own done criteria for the first time** — migration 012 up and down, `store/decisions.py`, `api/placements.py`, `views/PlacementForm.tsx`, `lib/api.ts`, and the three executable files (`test_TASK-007-AC4`, `test_TASK-007-AC10`, `test_E2E-001`, `e2e/TASK-007.spec.ts`) | TASK-007 / REQ-F-005, BR-001, BR-004, CON-003, ADR-002, ADR-004, CHG-029, CHG-039 | The same fourth run, which **did not write TASK-007** — but author, reviewer **and the fixer of what this review found** are one run here, which is the weakest separation in this log (**Q-026**, see the note below) | Requirement fit · Architecture fit · Security & validation · Test evidence · Change scope | **One of two directed checks failed, and it needed no mutation at all.** `POST /api/v1/scenarios/{id}/placements` with a crew of one **U+200B** or one **U+FEFF** was answered **201** on the untouched tree, and that invisible character is what `decision_records.payload` held — a placement under a person's name naming a crew nobody can see, in the one table BR-004 forbids correcting. `'   '`, U+00A0, U+2003 and U+3000 were all refused, so the rule looked present and was three characters short of the alphabet CHG-037 had already decided one module over. `PlacementForm` used `String.prototype.trim()`, which removes U+FEFF — **the browser strictest again**, so the hole was invisible from the screen and only a caller reaching the API met it. Raised as **CHG-039**, proposed, and **fixed in this round**: `store/blanks.py`, migration **016**, `frontend/lib/blank.ts`, and 33 new cases of which **60 go red with 016 removed**. **The second check held:** done criterion 2 — *it records the revision the operator was looking at, not the storm's pointer*. Mutation: `body.forecast_revision` ignored in favour of `scenario["forecast_revision"]`. **2** tests red, including the one named for the criterion. **What held, and it is most of the task:** criterion 4's nine direct-insert refusals, each read out of its own sentence; the bound tied between the trigger and `decisions.CREW_LABEL_MAX`; the UNSCORED asset accepted; migration 012's round trip with both append-only triggers proven still **refusing** by a real `UPDATE`; BR-001 asserted as a whole-database dump. | **Accept** | CHG-039 needs a human decision, and so does the observation beside it: `api/recommendations.py` has the identical hole on the decision note (`(body.note or "").strip()` accepts U+200B for a **required** justification) and belongs to TASK-004, which is Done |
+
+| 2026-08-16 | **TASK-008 re-reviewed after the remediation of both Blocks**, against its own done criteria — migrations 014 and 015, `store/dispatch.py`, `store/decisions.py`, `api/dismissals.py`, `frontend/lib/dismissal.ts`, `DismissAlarmControl.tsx`, `playwright.config.ts` and the four executable files | TASK-008 / REQ-F-008, REQ-F-009, AC-008, ADR-002, ADR-004, CHG-033…CHG-037 | The same fourth run, which **neither wrote nor fixed** TASK-008 and did not review it in either earlier round (**Q-026**) | Requirement fit · Architecture fit · Security & validation · Test evidence · Change scope | **The full gate is green and the directed check held.** The check went at the remediation's own answer to the standing Block — *is the partial unique index the rule, or is the `409` branch still the rule with an index beside it*. Mutation, chosen so it does not merely delete the index but makes it **present and wrong**: `create unique index` → `create index` in migration 015, which leaves the name, the column and the `where kind = 'dismiss'` predicate in `sqlite_master` and removes only the guarantee. **1** test red — `test_the_store_refuses_a_second_audit_row_for_one_dismissal` — so CHG-036 is held down by an assertion and not by the endpoint declining to issue the statement. The corrected control (`len(...) == 1`, its report dismissed by direct statement so no audit row is written) was re-read and it proves what the remediation says it proves. **One thing the remediation named as unfinished is now finished, by another task's entry:** `store/scenarios.py` still held the six-ASCII alphabet CHG-037 replaced one module over — CHG-039 closes it, together with the two live defects it was hiding. **No finding, and no change entry against this task.** | **Accept** | CHG-033…CHG-037 remain proposed, and **CHG-034 and CHG-035 still contradict each other** — whoever decides them must see both sentences |
+
+| 2026-08-16 | **TASK-009 output, reviewed against its own done criteria for the first time** — migration 013 up and down, `store/scenarios.py`, `api/scenarios.py`, `ScenarioSwitcher.tsx`, `ScenarioView.tsx`, `lib/api.ts`, and the three executable files (`test_TASK-009-AC5`, `test_TASK-009-AC10`, `test_ITEST-005`, `e2e/TASK-009.spec.ts`) | TASK-009 / REQ-F-010, ADR-002, CHG-030…CHG-032, CHG-039 | The same fourth run, which **did not write TASK-009** — but author, reviewer **and the fixer of what this review found** are one run here, as for TASK-007 (**Q-026**, see the note below) | Requirement fit · Architecture fit · Security & validation · Test evidence · Change scope | **One of two directed checks failed, and it needed no mutation at all.** `POST /api/v1/scenarios` with a `name` of one **U+00A0** was answered **201** on the untouched tree and stored, and `ScenarioSwitcher` — the screen REQ-F-010 exists for — drew a row with no visible label; the same for `source_note`. `'   '` was refused throughout. The reason nothing was ever red is the sharpest part of the finding: `store/scenarios._WHITESPACE` and `scenarios_identity_shape` enumerated the **identical** six ASCII characters, so the service and the store agreed with each other perfectly and were wrong the same way, and `test_a_whitespace_only_name_is_refused` was parametrised over exactly those six. `ScenarioUploadPanel` used `String.prototype.trim()` — **the browser strictest again**. Raised as **CHG-039**, proposed, and **fixed in this round**: the parametrisation now reads the alphabet out of `store/blanks.py` rather than restating it, so a seventh copy of the list cannot be what the test checks against. **The second check held:** done criterion 8 — *two storms loaded inside one clock tick come back in the order they were loaded*. Mutation: `order by s.seq desc` → `order by s.loaded_at desc, s.id desc`, which is CHG-018's defect restored on the fourth table. **1** test red, and it is the one that writes two rows with identical `loaded_at` strings. **What held:** criterion 5's direct-insert idempotency; the content-key clauses read out of their own sentences; both bounds tied to `NAME_MAX` and `SOURCE_NOTE_MAX`; the restart across `build_application`; migration 013's round trip with both append-only triggers still refusing; ITEST-005's paging with a limit smaller than the storm; twelve browser cases. | **Accept** | CHG-030…CHG-032 and CHG-039 need a human decision |
+
 **Decision values:** Accept · Accept with follow-up · Revise · Reject · Block
+
+### The round that closed TASK-005 to TASK-009 — ten checks, two failed, and neither needed a mutation
+
+**Read the Q-026 note under this section before reading the decisions above it.** Five tasks are
+marked Done in one round and two of them were fixed by the run that accepted them. That is the
+weakest separation this log has recorded, and it is stated here rather than left to be worked out
+from the *Reviewer* column.
+
+**The gate was run first, and two of its parts did not exist.** `pytest -q` on the untouched
+tree: **534 passed, 1 skipped**. `ruff` clean. `ci/fitness.py` **7 of 7 wired**. `ci/evals.py`
+holding the floor, 5 scorers × 2 cases. `tsc`, `lint`, `build` and all **36** Playwright specs.
+And then:
+
+- **`ci/gate.sh` did not exist.** `cicd-pipeline.md`'s *Local-only alternative* describes the
+  script in full — `set -e`, the stages in order, and two extra lines for fitness and for the
+  trigger check — and says *"this is the right shape for this project"*. Nothing implemented it,
+  so *the gate is green* was a claim assembled by hand each time and no two runs had to agree
+  about what it included. Eleven review rounds have each recited a slightly different list.
+  It exists now, and it is the nine stages CLAUDE.md names.
+- **Stage 7 did not exist either.** The pipeline puts the trigger check *after migrate and before
+  deploy* and makes a point of it not being a schema inspection. FF-004 answers a different
+  question — *is the running system append-only* — on a database the application built.
+  `ci/triggers.py` answers stage 7's: it applies every migration to an empty file, writes one
+  real `decision_records` row, and issues a real `UPDATE` and a real `DELETE` against it. Three
+  mutations, none of which touches a trigger: point the haystack at a name that is not there
+  (red), give it a refusal sentence the database never says (red — the message is genuinely
+  read), and aim the statements at a table with no such trigger (red — the *accepted* arm works).
+- **One test was skipped and its reason had expired six tasks ago.** ITEST-001's ranking half was
+  skipped by name in TASK-002, correctly, because standing up a placeholder scorer would have
+  anticipated a module that task was forbidden to touch. TASK-003 shipped the scorer. The skip
+  outlived its cause, and `cicd-pipeline.md`'s own rule is that *a test that is skipped to make
+  the pipeline pass is a finding, not a fix* — a skip whose stated cause is resolved is that
+  finding wearing an explanation. It is paid: the case asserts the stored `risk_scores` rows
+  rather than the response, because §6's *every read is served from stored results* is what makes
+  that the different assertion. **The suite has no skipped test at all now.**
+
+| Check | Task | Result |
+|---|---|---|
+| **A rule written in several layers, with nothing that fails when the copies disagree** | TASK-007 | **Failed, live, no mutation.** A crew label of one U+200B or one U+FEFF was answered **201** and written to `decision_records`. See below. |
+| **The same, on the columns the last round named as unfinished** | TASK-009 | **Failed, live, no mutation.** A storm named U+00A0 was stored and drawn on the switcher as a row with no label. See below. |
+| **A refusal asserted by its status code, when the code has more than one cause** | TASK-005 | **Held**, with one observation fixed in place. Deleting the unknown-storm lookup from `file_damage_report` turns **1** test red — but it turned red on the `500` the request then produced, not on the rule, because the assertion was `status_code == 404` and nothing else. It reads the `code` and the sentence now. |
+| **A claim the remediation itself introduced, and therefore the least-tested one** | TASK-006 | **Held.** CHG-027 says `ranked` is read out of `risk_scores` and never inferred from the pointer. Replacing the `exists` subquery with `r.forecast_revision <= (select forecast_revision from scenarios …)` — the cheaper spelling the entry declines — turns **1** test red, and it is the one named for the rule. |
+| **A rule enforced in service code that the store could refuse** | TASK-008 | **Held.** `create unique index` → `create index` on `decision_records_one_dismissal_per_report`: *present and wrong* rather than absent, so the name, the column and the `where kind = 'dismiss'` predicate all stay in `sqlite_master`. **1** test red. CHG-036 is the rule, not a decoration beside the `409`. |
+| **A property asserted only within one process lifetime** | TASK-007 | **Held.** Criterion 2 — *the revision the operator was looking at, not the storm's pointer*. Ignoring `body.forecast_revision` turns **2** tests red. |
+| **A total order resting on a key that is not total** | TASK-009 | **Held.** `order by s.seq desc` → `order by s.loaded_at desc, s.id desc`, which is CHG-018's defect restored on the fourth table. **1** test red, and it is the case that writes two rows with byte-identical `loaded_at` strings. |
+| **A gate stage that does not exist** | — | **Failed.** `ci/gate.sh`, above. |
+| **A stage the pipeline separates and the repository had merged** | — | **Failed.** Stage 7, above. |
+| **A skip whose reason has expired** | — | **Failed.** ITEST-001, above. |
+
+**Every mutation in this section was applied, the named stage of the gate run, and reverted, and
+`git status --short` was checked after each one.**
+
+#### The two failures are one sentence, for the fourth and fifth time
+
+CHG-023 wrote it about a neighbourhood, CHG-033 about a dismissal reason, CHG-037 about the same
+reason once the ASCII fix turned out to be three characters short: **the same non-answer wearing a
+different whitespace character.** CHG-039 is the fourth and fifth instances, and what makes them
+worth more than the fix is *why* they were there after CHG-037 answered the question.
+
+**CHG-037 was right about the alphabet and its reach was one module.** It tied
+`store/dispatch.py`, migration 015 and `frontend/lib/dismissal.ts` together with a test that
+fails when any two disagree — and tied nothing to any other column. So every column written
+afterwards reached for its own language's idea of blank, and the three languages are three
+different sets: Python's `str.strip()` removes `White_Space` and neither invisible; JavaScript's
+`String.prototype.trim()` removes U+FEFF and not U+200B; SQLite's one-argument `trim()` removes
+spaces alone. `decisions.crew_label` used the first, migration 012 the third plus a five-way
+`replace` chain, and `store/scenarios.py` and migration 013 both enumerated the same six ASCII
+characters.
+
+**That last pair is the most instructive thing in this round.** The service and the store agreed
+with each other *perfectly*. Every tie test anyone would think to write — *do the two copies
+match* — passed, and `test_a_whitespace_only_name_is_refused` was parametrised over exactly the
+six characters both copies knew about. Two layers can agree and both be wrong, and a tie between
+them proves only that nobody has moved one. The parametrisation now reads the alphabet out of
+`store/blanks.py` instead of restating it, which is the only version of that test that can find
+this.
+
+**And the browser was the strictest layer in both cases**, which is CHG-037's sentence verbatim
+and the reason neither hole was visible from any screen: `PlacementForm` and
+`ScenarioUploadPanel` both used `String.prototype.trim()`, so the buttons behaved correctly and
+only a caller reaching the API ever met the defect. *An enforcement that is strictest in the layer
+ADR-002 forbids is worse than one that is missing*, because the screen is what everybody looks at.
+
+**The placement is the worse of the two and it is worth saying why.** A dismissal reason sits on
+a `damage_reports` row. A placement is a `decision_records` row, and BR-004 means a correction is
+a new row — the invisible crew label stays in the artefact `technical-spec.md` calls *what is
+produced to a regulator afterwards*, permanently, under the name of whoever recorded it.
+
+**What was fixed, and the mutation that makes each red.** The alphabet moves to
+`store/blanks.py`, a leaf module — `dispatch` imports `decisions`, so `decisions` cannot import
+`dispatch` back without the cycle FF-001 refuses — and to `frontend/lib/blank.ts`, because being
+filed under one field's name is exactly what let two other fields keep their own definition.
+Migration **016** puts the same 31 codepoints into both triggers. Removing 016 turns **60** tests
+red. Putting `.trim()` back into either component turns the layer guard red. And the tie test's
+regex is **widened** rather than narrowed — it still matches the old spelling, so a file that
+re-introduces `DISMISSAL_BLANK_CODEPOINTS` is still counted as a second home.
+
+#### Three things this round did not do, said so the next reader does not have to find them
+
+**`api/recommendations.py` has the identical hole and it was left alone.** `(body.note or
+"").strip()` accepts one U+200B as the **required** justification for a `change` or a `reject`,
+and writes it to `decision_records`. It was confirmed by request, not reasoned about: `201`,
+stored as `{"note": "​", "change": null}`. It belongs to **TASK-004**, which is Done, and
+CHG-024's rule is that an observation is recorded with its reasons rather than smuggled into a
+remediation for something else. It is the sixth instance of the same sentence and the next task
+that touches that endpoint owns it.
+
+**`DispatchBoard`'s `neighbourhood.trim()` is a second definition too**, and it is left because
+the asymmetry runs the safe way there: `store/dispatch.py` already holds the wide alphabet, so the
+server refuses more than the browser does and the person is shown the `400`. It is not a hole. It
+is still a second definition, and *the browser refuses more than the server* is the asymmetry this
+log has twice called hidden rather than safe — the direction is what makes it tolerable, not the
+fact that the two disagree.
+
+**Neither of the two failures had a browser case written for it.** The endpoint tests and the
+layer guard cover the server and cover *which helper the component imports*; nothing drives a real
+browser and types an invisible character into either field. That is the third time a criterion
+about a screen has been settled by reading source rather than by driving one, and it is recorded
+as such rather than counted as covered.
+
+### Author, reviewer and — for two of these five — fixer are one run. This is the weakest row in this log.
+
+**Q-026, stated in the rows rather than left to the signature, and stated hardest here.** Eleven
+earlier rounds could each say something in their own defence: the run had not written the task, or
+had not reviewed it before, or had chosen its checks from `AGENT.md`'s lessons table before reading
+any code. This round can say the first of those for all five tasks and the second for four. It
+**cannot** say it of TASK-007 and TASK-009, because the defect CHG-039 records was found here and
+fixed here, by the same invocation, and then signed off by it. **There is no human between the work
+and its judgement**, no real people exist for this prototype, one person holds every decision-owner
+role, and Q-026 records that as a deferral rather than resolving it with invented names.
+
+What is offered instead of independence is the same thing every earlier round offered and nothing
+more: evidence a later reader can re-run. Every mutation is named with what it turned red and,
+more usefully, with what it left **green**. Removing migration 016 turns 60 tests red; that number
+is checkable in about a minute and it is the whole of the argument that the fix is real.
+
+**And the count this log has been keeping.** Seven reviews across five tasks have now each found
+something the previous one did not, every one of them by a directed check and none of them by the
+gate — and **the last two needed no mutation at all**, only a request. 534 tests, seven fitness
+functions, ten evals and thirty-six browser cases were green while a crew placement could be
+recorded under an invisible name in a table nobody may correct, while a storm could be loaded with
+no label on the screen whose whole purpose is choosing between storms, while the script the
+deployment document describes as *the gate* did not exist, and while one test sat skipped for a
+reason that had stopped being true six tasks earlier.
 
 ### TASK-010 — the last fitness function, and the reason it took a decision rather than a script
 

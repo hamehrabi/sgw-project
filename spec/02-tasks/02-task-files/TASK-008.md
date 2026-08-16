@@ -8,9 +8,18 @@
 **Task ID:** TASK-008
 **Task title:** Dismiss a false alarm in one action
 **Priority:** P1
-**Status:** In review — built 2026-08-16, **blocked twice on the same day and remediated the same
-day**. Five change entries raised and left **proposed**: CHG-033, CHG-034, CHG-035, and — from the
-remediation — **CHG-036** and **CHG-037**.
+**Status:** **Done** — accepted 2026-08-16 after the remediation of both Blocks, by a run that
+neither wrote nor fixed this task and did not review it in either earlier round (`review-log.md`;
+the Q-026 conflict is in the row). Built 2026-08-16, **blocked twice on the same day and
+remediated the same day**. The accepting round went at the remediation's own answer to the
+standing Block and it **held**: `create unique index` -> `create index` on
+`decision_records_one_dismissal_per_report` — *present and wrong* rather than absent, so the
+name, the column and the `where kind = 'dismiss'` predicate all stay in `sqlite_master` — turns
+one test red, so CHG-036 is the rule and not a decoration beside the `409`. The one thing the
+remediation named as unfinished, `store/scenarios.py`'s six-ASCII alphabet, is closed by
+**CHG-039** under TASK-009. Five change entries raised and left **proposed**: CHG-033, CHG-034,
+CHG-035, and — from the remediation — **CHG-036** and **CHG-037**. **Done is not the same as
+decided**, and **CHG-034 and CHG-035 still contradict each other**.
 **Assigned to:** AI agent
 
 ---

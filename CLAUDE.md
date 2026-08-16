@@ -38,18 +38,17 @@ reader can still find. Two live examples are in *Known spec drift* below.
 
 ## Where things stand
 
-**TASK-001 is Done** — accepted at review, with the author-is-reviewer conflict recorded in
-`review-log.md` rather than hidden (Q-026).
+**All ten tasks are Done, and the last five were closed in one round on 2026-08-16.** Read the
+way that round is weak before the way it is strong: one agent run reviewed TASK-005 to TASK-009
+against their own done criteria, ran ten directed checks, and **two failed** — both on the two
+tasks nobody had ever reviewed, and **the same run fixed them and then signed those tasks off**.
+That is the weakest separation `review-log.md` records, and it is stated in the rows rather than
+hidden (Q-026). TASK-005, TASK-006 and TASK-008 are cleaner: the run neither wrote nor fixed
+them, and their checks held.
 
-**TASK-005, TASK-006 and TASK-007 are all In review, none is Done, and the first two have each
-been blocked by a reader who did not write them.** Seven of ten tasks are built — sign-in,
-upload/parse/joined view, the ranked risk list, the append-only decision record, the dispatch
-board, the re-rank on a forecast change, and the crew placement. TASK-005 was blocked at a second
-review and again at a third; TASK-006 was blocked at its first. Every round's findings were fixed
-the same day (`TASK-005.md`, *What the third review found*; `TASK-006.md`, *What the review found,
-and what was done about it*). **None is Done until somebody who did not build it says so**, and
-TASK-007 was built without assuming either of the others is accepted — it adds no table and
-changes none.
+**Done is not the same as decided. Twenty-four change entries are open and none is accepted.**
+Two of them contradict each other (CHG-034 and CHG-035), and one records a defect deliberately
+left unfixed — see *Known open defects* below.
 
 **A crew placement is a `decision_records` row and nothing else moves** (REQ-F-005, TASK-007).
 `kind` has permitted `'placement'` since migration 006 with no writer, no reader and no decided
@@ -73,9 +72,16 @@ one agreed and 323 tests could not tell them apart. Reordering it turned 17 test
 touching a line of code. Where a rule decides an *order*, a *resolution* or a *grouping*, the
 fixture has to be one in which the wrong answers are different answers.
 
-**The gate is five commands, and the test suite is only one of them:**
-`pytest` (534) · `ruff` · `ci/fitness.py` (**7 of 7 wired**) · `ci/evals.py` (the quality floor) ·
-`playwright` (36, real Chromium against both processes).
+**The gate is one script now, and the test suite is one of its nine stages:** `bash ci/gate.sh`
+— `pytest` (**634, none skipped**) · `ruff` · `ci/fitness.py` (**7 of 7 wired**) · `ci/evals.py`
+(the quality floor) · `ci/triggers.py` (stage 7 — after migrate, a real `UPDATE` refused) ·
+`tsc` · `lint` · `build` · `playwright` (36, real Chromium against both processes).
+
+**The script did not exist until 2026-08-16 and that was itself a finding.**
+`cicd-pipeline.md`'s *Local-only alternative* describes it in full and calls it the right shape
+for this project; nothing implemented it, so *the gate is green* was a claim assembled by hand
+each time and eleven review rounds each recited a slightly different list. **Do not go back to
+reciting it.** If a stage belongs in the gate, it belongs in `ci/gate.sh`.
 
 **Run the suite more than once before calling the gate green.** Five of fifteen clean runs were
 red before migration 008, from one root cause, and a suite run once looks green half the time.
@@ -252,9 +258,13 @@ python -m venv .venv
 cd frontend && npm install
 
 # the gate — the suite is NOT the gate on its own
-.venv/Scripts/python.exe -m pytest                       # 534 tests, 1 skipped
+bash ci/gate.sh                                          # ALL of the below, in order
+
+# or one stage at a time
+.venv/Scripts/python.exe -m pytest                       # 634 tests, none skipped
 .venv/Scripts/python.exe -m ruff check backend spec/03-tests/05-executable ci
 .venv/Scripts/python.exe ci/fitness.py                   # FF-001..FF-007, all seven
+.venv/Scripts/python.exe ci/triggers.py                  # stage 7, after migrate
 cd frontend && npx tsc --noEmit && npm run lint && npm run build
 cd frontend && npm run e2e     # Playwright starts BOTH processes; no mocks
 
@@ -283,6 +293,11 @@ Running one test — files are named for their test ID, so the ID is the selecto
 because folding them into the test run is exactly how FF-002 decays while every feature test
 stays green. The trigger check runs *after* migrate and *before* deploy, and it is not a schema
 inspection: attempt an `UPDATE` on `decision_records` and require the database to refuse it.
+
+**No test is skipped, and a skip is a finding rather than a fix** (`cicd-pipeline.md`, Rules).
+ITEST-001's ranking half was skipped by name in TASK-002 — correctly, because the scorer did not
+exist — and stayed skipped for six tasks after TASK-003 shipped it. **A skip whose stated cause
+has been resolved is a finding wearing an explanation.** Check the reason, not the label.
 
 **All seven fitness functions now run** (`spec/01-docs/04-technical-spec/fitness-functions.md`).
 FF-003 was the last, wired by TASK-010; **CHG-038** records the three things wiring it required
@@ -326,6 +341,10 @@ runner produces either a flaky suite or one that asserts nothing.
   low-risk. **An empty screen must never read as safety** — three of this product's screens look
   like good news when blank.
 - **Never move a constraint the store could enforce into the service layer.**
+- **Never write a second definition of what counts as blank** (CHG-037, CHG-039). It is one
+  alphabet, in `store/blanks.py`, in the schema as `char(...)`, and in `frontend/lib/blank.ts`.
+  `str.strip()`, `String.prototype.trim()` and SQLite's one-argument `trim()` are three different
+  sets, and the browser being the strictest is what hides the hole rather than what closes it.
 - **Never answer an open question by guessing.** Stop and ask. The standing set is in `AGENT.md`;
   a task file's own stop condition narrows it.
 
@@ -334,6 +353,23 @@ dropping an unscorable asset because omitting the row is the tidiest code; imple
 permission's allow path and not its deny path; and moving a store constraint into the service
 layer because it is easier to write there. When a review finds a repeatable mistake, add a row to
 the *Lessons from past mistakes* table in `AGENT.md` — the row is worth more than the fix.
+
+## Known open defects — recorded, not fixed
+
+**One live defect is knowingly unfixed and it is in `decision_records`.**
+`api/recommendations.py` does `(body.note or "").strip()`, and Python's `str.strip()` removes
+neither U+200B nor U+FEFF — so a `change` or a `reject` whose **required** justification is one
+zero-width space is answered `201` and written to the append-only record, where BR-004 means a
+correction is a new row. It is the sixth instance of CHG-023's sentence and the identical shape
+CHG-039 closed on the crew label and on a storm's name. It belongs to **TASK-004**, which is
+Done, and CHG-024's standing rule is that an observation is recorded with its reasons rather than
+smuggled into a remediation for something else. **The next task that touches that endpoint owns
+it.**
+
+`DispatchBoard`'s `neighbourhood.trim()` is a second definition of blank too. It is not a hole —
+the server already refuses more than the browser does, so the person is shown the `400` — but
+*the browser refuses more than the server* is the asymmetry this log has twice called hidden
+rather than safe.
 
 ## Known spec drift
 

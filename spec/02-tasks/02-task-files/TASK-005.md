@@ -7,7 +7,7 @@
 **Task ID:** TASK-005
 **Task title:** Dispatch board — one shared damage and repair list
 **Priority:** P1
-**Status:** **In review** — built 2026-08-16, blocked at a second review the same day, remediated, **blocked again at a third review**, and those four findings and two observations fixed (see *What the third review found* below). Nine change entries are now open against this task and **none is accepted**: **CHG-016**, **CHG-017**, **CHG-018**, **CHG-019**, **CHG-020**, **CHG-021**, **CHG-022**, **CHG-023**, **CHG-024**. Re-review owed.
+**Status:** **Done** — accepted 2026-08-16 at a fourth review, by a run that neither wrote, fixed nor previously reviewed this task (`review-log.md`; the Q-026 conflict is recorded in the row rather than left to the signature). Built 2026-08-16, blocked at a second review the same day, remediated, blocked again at a third, and those four findings and two observations fixed (*What the third review found*, below). The accepting round's directed check — *which refusal, not how many* — **held**, and one observation was fixed in place: `test_an_unknown_storm_is_404_rather_than_a_new_board` asserted a status code and nothing else, so it went red for the `500` the mutation produced rather than for the rule. It reads the sentence now. Nine change entries are open against this task and **none is accepted**: **CHG-016**, **CHG-017**, **CHG-018**, **CHG-019**, **CHG-020**, **CHG-021**, **CHG-022**, **CHG-023**, **CHG-024**. **Done is not the same as decided.**
 **Assigned to:** AI agent
 
 ---

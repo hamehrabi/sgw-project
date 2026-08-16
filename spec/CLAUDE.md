@@ -2,7 +2,8 @@
 
 An internal dashboard that loads a prepared storm scenario, ranks assets by risk with a
 plain-words reason beside each rank, and records every recommendation and decision.
-**It recommends; people decide.** No code exists yet.
+**It recommends; people decide.** All ten tasks are Done as of 2026-08-16; the code is in
+`backend/` and `frontend/` at the repository root, not under `spec/`.
 
 ## Start here
 
@@ -63,17 +64,21 @@ invents nothing**. It is off the critical path — the ranking renders without i
 frontend   npm ci · npm run lint · npx playwright test · npm run dev
 backend    pip install -r requirements.txt · ruff check · pytest
 migrate    raw SQL — and every migration re-asserts both decision_records triggers
-gate       the suite PLUS FF-001..FF-007 PLUS the trigger check.
-           Not the suite alone — see 07-ops/01-deployment/cicd-pipeline.md
+gate       bash ci/gate.sh — nine stages. The suite PLUS FF-001..FF-007 PLUS the
+           trigger check PLUS the eval floor. Never the suite alone; the script
+           exists so nobody has to recite the list. 07-ops/01-deployment/cicd-pipeline.md
 ```
 
 ## Where things stand
 
-- **Stage:** specification complete, all eight rounds accepted, and 14 open questions
-  answered afterwards (CHG-006). Implementation not started.
-- **Next task:** TASK-001 — sign in with two roles, and the application shell.
-- **Nothing blocks building.** TASK-002 was blocked on the scenario format and is not now:
-  a scenario is `manifest.json` plus four CSVs, under 5 MB.
+- **Stage:** specification complete and **all ten tasks Done** (2026-08-16). 634 tests, none
+  skipped; seven fitness functions; ten evals; 36 browser cases; `bash ci/gate.sh` exits 0.
+- **Done is not the same as decided.** Twenty-four change entries are `proposed` and **none is
+  accepted**. Two contradict each other (CHG-034, CHG-035), and one live defect is knowingly
+  unfixed — see the root `CLAUDE.md`, *Known open defects*.
+- **The last review round is the weakest in the log and says so.** TASK-005 to TASK-009 were
+  closed in one run; two of the five had a defect found and fixed by the run that then accepted
+  them (Q-026, `05-review/01-logs/review-log.md`).
 - **Blocking the LLM path only:** **Q-029** (cost guards — max calls per ranking, monthly
   ceiling, timeout) and **Q-030** (which pinned model). ADR-009 makes all four mandatory and
   sets none; a ranking phrases up to 220 reasons, so unbounded is an unbounded invoice.

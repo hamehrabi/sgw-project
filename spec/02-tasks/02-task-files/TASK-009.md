@@ -7,18 +7,32 @@
 **Task ID:** TASK-009
 **Task title:** Switch between several loaded storms
 **Priority:** P2
-**Status:** In review — built 2026-08-16. Suite **450 + 1 skipped over three runs**, `ruff`,
-`ci/fitness.py` (6 of 7 wired), `ci/evals.py`, `tsc`, `lint`, `build` and all **32** Playwright
-specs pass. Three change entries raised and left **proposed**:
-**CHG-030** (nothing lists the loaded storms, so the component whose whole purpose is choosing
-among them had nothing to choose from), **CHG-031** (`scenarios.source_note` was holding a
-SHA-256 digest, because the content key §5's idempotency rule turns on had no column of its
-own — and the rule lived in one service-layer lookup that a direct insert walked past), and
-**CHG-032** (`scenarios` had no total order, so a list of storms loaded in the same clock tick
-came back in coin-flip order — CHG-018's decision, on the fourth table read as a list).
-**It is not Done until somebody who did not write it says so** — three of four directed checks
-failed at each of the last two reviews on this project, and a green gate is where a review
-starts.
+**Status:** **Done** — accepted 2026-08-16 at its first review, by a run that did not write it
+(`review-log.md`). **Read the Q-026 note in that row before reading this line:** as for TASK-007,
+the review found a live defect and **the same run fixed it and then signed the task off**. Suite
+**634 + 0 skipped**, `ruff`, `ci/fitness.py` (**7 of 7 wired**), `ci/evals.py`, `ci/triggers.py`,
+`tsc`, `lint`, `build`, all **36** Playwright specs and `ci/gate.sh`.
+
+**What the review found.** A storm named one **U+00A0** was answered `201` and stored, and
+`ScenarioSwitcher` — the screen REQ-F-010 exists for — drew a row with no visible label; the same
+for `source_note`. No mutation was needed. The reason nothing had ever been red is the sharp part:
+`store/scenarios._WHITESPACE` and `scenarios_identity_shape` enumerated the **identical** six
+ASCII characters, so the service and the store agreed with each other perfectly and were wrong the
+same way, and `test_a_whitespace_only_name_is_refused` was parametrised over exactly those six.
+**Two layers can agree and both be wrong, and a tie between them proves only that nobody has moved
+one.** The parametrisation now reads the alphabet out of `store/blanks.py` rather than restating
+it. Raised as **CHG-039** and fixed with migration **016**. The second check — done criterion 8,
+*the list has a total order* — **held**: `order by s.seq desc` -> `order by s.loaded_at desc,
+s.id desc`, which is CHG-018's defect restored on the fourth table, turns one test red.
+
+Four change entries raised and left **proposed**: **CHG-030** (nothing lists the loaded storms, so
+the component whose whole purpose is choosing among them had nothing to choose from), **CHG-031**
+(`scenarios.source_note` was holding a SHA-256 digest, because the content key §5's idempotency
+rule turns on had no column of its own — and the rule lived in one service-layer lookup that a
+direct insert walked past), **CHG-032** (`scenarios` had no total order, so a list of storms
+loaded in the same clock tick came back in coin-flip order — CHG-018's decision, on the fourth
+table read as a list) and **CHG-039**. **Done is not the same as decided**, and none is
+accepted.
 **Assigned to:** AI agent
 
 ---

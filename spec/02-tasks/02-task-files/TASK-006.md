@@ -7,14 +7,19 @@
 **Task ID:** TASK-006
 **Task title:** Re-rank on a forecast change, keeping the previous order
 **Priority:** P1
-**Status:** In review — built 2026-08-16, **blocked at review the same day**, and all three
-findings plus all three observations fixed on 2026-08-16 (*What the review found, and what was
-done about it*, below). Four change entries raised and left **proposed**: **CHG-025** (a
+**Status:** **Done** — accepted 2026-08-16 after remediation, by a run that neither wrote nor
+fixed this task (`review-log.md`; the Q-026 conflict is in the row). Built 2026-08-16, **blocked
+at review the same day**, and all three findings plus all three observations fixed the same day
+(*What the review found, and what was done about it*, below). The accepting round aimed its
+directed check at CHG-027 — the remediation's own newest claim, and therefore its least-tested
+one — and it **held**: replacing `forecasts.revisions`' `exists (select 1 from risk_scores ...)`
+with the pointer-based inference the entry declines in writing turns one test red, and it is the
+one named for the rule. Four change entries raised and left **proposed**: **CHG-025** (a
 scenario's forecast series had nowhere to live, and nothing decided what "the next forecast
 change" is), **CHG-026** (`risk_scores` had no enforcement of *never rewrites n*), **CHG-027**
 (a forecast the file carries is not a revision that can be read back, and the screen offered
 both as one list) and **CHG-028** (three invariants on `risk_scores` the store could hold and
-did not). **It is not Done until somebody who did not fix it says so.**
+did not). **Done is not the same as decided** — none of the four is accepted.
 **Assigned to:** AI agent
 
 ---

@@ -538,7 +538,22 @@ def test_filing_a_report_is_not_privileged(client, accounts):
 
 
 def test_an_unknown_storm_is_404_rather_than_a_new_board(client, accounts):
+    """**The refusal is named, not merely counted.**
+
+    This read `status_code == 404` and nothing else. `AGENT.md`'s row about `POST /placements` is
+    the reason it does not now: *a status code is a category*, and this API answers `404` for a
+    storm that does not exist, for a revision nothing ranked, and for a report that is not this
+    storm's. Removing the storm lookup here happens to produce a `500` rather than a second
+    `404`, so the old assertion did go red — but it went red for the crash, not for the rule, and
+    the next refusal added to this endpoint would make it unfailable without anybody touching it.
+    """
     loaded_storm(client, accounts)
 
-    assert report(client, "SC-nothing-here", "Northgate").status_code == 404
-    assert client.get("/api/v1/scenarios/SC-nothing-here/jobs").status_code == 404
+    refused = report(client, "SC-nothing-here", "Northgate")
+    assert refused.status_code == 404, refused.text
+    assert refused.json()["code"] == "not_found"
+    assert "storm" in refused.json()["message"].lower(), refused.text
+
+    board = client.get("/api/v1/scenarios/SC-nothing-here/jobs")
+    assert board.status_code == 404, board.text
+    assert "storm" in board.json()["message"].lower(), board.text

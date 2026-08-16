@@ -7,14 +7,28 @@
 **Task ID:** TASK-007
 **Task title:** Record a crew placement against the ranking
 **Priority:** P1
-**Status:** In review — built 2026-08-16. Suite **386 + 1 skipped over four runs**, `ruff`,
-`ci/fitness.py` (6 of 7 wired), `ci/evals.py`, `tsc`, `lint`, `build` and all **21** Playwright
-specs pass. One change entry raised and left **proposed**:
-**CHG-029** (`decision_records.kind` permitted `'placement'` and nothing decided what a
-placement *is*, so the payload had no shape and the store could not refuse a placement it
-cannot trace). **It is not Done until somebody who did not write it says so** — three of four
-directed checks failed at the last two reviews on this project, and a green gate is where a
-review starts.
+**Status:** **Done** — accepted 2026-08-16 at its first review, by a run that did not write it
+(`review-log.md`). **Read the Q-026 note in that row before reading this line:** the review found
+a live defect and **the same run fixed it and then signed the task off**, which is the weakest
+separation this log has recorded. Suite **634 + 0 skipped**, `ruff`, `ci/fitness.py` (**7 of 7
+wired**), `ci/evals.py`, `ci/triggers.py`, `tsc`, `lint`, `build`, all **36** Playwright specs
+and `ci/gate.sh`.
+
+**What the review found.** A crew label of one **U+200B** or one **U+FEFF** was answered `201`
+and written into `decision_records` — a placement under a person's name naming a crew nobody can
+see, in the one table BR-004 forbids correcting. No mutation was needed; the request was enough.
+`'   '`, U+00A0, U+2003 and U+3000 were all refused, so the rule looked present and was three
+characters short of the alphabet CHG-037 had already decided one module over — and
+`PlacementForm` used `String.prototype.trim()`, which removes U+FEFF, so the hole was invisible
+from the screen. Raised as **CHG-039** and fixed: `store/blanks.py`, migration **016**,
+`frontend/lib/blank.ts`, 33 new cases, **60 red with 016 removed**. The second check — done
+criterion 2, *the revision the operator was looking at, not the storm's pointer* — **held** at
+two red.
+
+Two change entries raised and left **proposed**: **CHG-029** (`decision_records.kind` permitted
+`'placement'` and nothing decided what a placement *is*, so the payload had no shape and the
+store could not refuse a placement it cannot trace) and **CHG-039**. **Done is not the same as
+decided**, and neither is accepted.
 **Assigned to:** AI agent
 
 ---

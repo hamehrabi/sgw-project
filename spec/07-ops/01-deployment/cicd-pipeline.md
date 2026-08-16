@@ -35,8 +35,9 @@ forward?*
               A SEPARATE STAGE, not part of Test.
 5. Build:     npm run build        # then the container image
 6. Migrate:   npx drizzle-kit migrate
-7. TRIGGERS:  confirm both decision_records triggers exist, by attempting an UPDATE
-              and asserting the database refuses it
+7. TRIGGERS:  python ci/triggers.py  # confirm both decision_records triggers exist, by
+              attempting a real UPDATE and a real DELETE and asserting the database refuses
+              both. Wired 2026-08-16; it had no implementation before that.
 8. Deploy:    npm start            # next start, one process
 9. Smoke:     end-to-end-tests.md, production smoke section
 10. Monitor:  first release window
@@ -78,7 +79,10 @@ than default them. That is the gate working, not an obstacle to route around.
 ## Rules
 
 - **Do not merge failing checks** (Appendix L).
-- A test that is skipped to make the pipeline pass is a **finding**, not a fix.
+- A test that is skipped to make the pipeline pass is a **finding**, not a fix — **and so is
+  a skip whose stated reason has since been resolved.** ITEST-001's ranking half carried a
+  correct reason for six tasks after that reason stopped being true. The suite has no skipped
+  test now; check the reason, not the label.
 - Migrations run *before* the code that depends on them (Ch. 23 §23.6).
 - Secrets come from the environment, never from the repository.
 - Every pipeline failure that reaches production becomes a new test
@@ -108,6 +112,15 @@ echo "ALL GATES PASSED"
 ```
 
 `set -e` makes the script stop at the first failure — that is the gate.
+
+**That script is `ci/gate.sh`, and it did not exist until 2026-08-16.** This section described it
+from the day it was written and nothing implemented it, so *the gate is green* was a claim
+assembled by hand for eleven review rounds, each of which recited a slightly different list of
+stages. It runs nine: `pytest`, backend `ruff`, `ci/fitness.py`, `ci/evals.py`, `ci/triggers.py`,
+`tsc`, frontend `lint`, `build`, `playwright`. **Stage 7 is `ci/triggers.py`**, which applies
+every migration to an empty database and then issues a real `UPDATE` and a real `DELETE` against
+a real `decision_records` row — a different question from FF-004's, which asks whether the
+*running system* is append-only on a database the application built.
 
 **This is the right shape for this project.** CON-006 rules out a paid platform, and a script
 that fails fast delivers every benefit that matters: the same stages, in the same order, blocking

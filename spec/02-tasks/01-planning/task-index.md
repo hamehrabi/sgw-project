@@ -12,11 +12,11 @@
 | TASK-002 | Upload and parse a prepared storm into the joined asset view — **and wire FF-001 and FF-006** | REQ-F-001, REQ-F-010, REQ-NF-003, SEC-Z-002, FF-001, FF-006 | P0 | TASK-001 | **Done** | agent | ATEST-001, ATEST-002, ATEST-009, ATEST-010, UTEST-002…008, ITEST-001, FTEST-001…003, STEST-005…007, E2E-002 |
 | TASK-003 | Ranked risk list with plain-words reasons, scored by a deterministic rule (ADR-005) | REQ-F-002, REQ-F-003, BR-002, FF-007 | P0 | TASK-002 | **Done** | agent | ATEST-003, ATEST-004, UTEST-009, UTEST-010, FTEST-004, EVAL-001, PTEST-001 |
 | TASK-004 | Accept, change, or reject a recommendation, writing the append-only record | REQ-F-006, REQ-F-009, BR-001, BR-004, FF-004, FF-005 | P1 | TASK-003 | **Done** | agent | ATEST-006, ATEST-008, ITEST-002, FTEST-005, STEST-008 |
-| TASK-005 | Dispatch board — one shared damage and repair list | REQ-F-007, REQ-NF-007 | P1 | TASK-002 | **In review** | agent | ATEST-007, ITEST-003, PTEST-002, UTEST-012, ITEST-002 (the ordering half) |
-| TASK-006 | Re-rank on a forecast change, keeping the previous order | REQ-F-004, AC-005 | P1 | TASK-003 | **In review** | agent | ATEST-005, ITEST-004 |
-| TASK-007 | Record a crew placement against the ranking | REQ-F-005, BR-001 | P1 | TASK-003 | **In review** | agent | E2E-001, FTEST-005 (the placement half) |
-| TASK-008 | Dismiss a false alarm in one action | REQ-F-008, REQ-F-009, AC-008 | P1 | TASK-005 | **In review** | agent | UTEST-011 |
-| TASK-009 | Switch between several loaded storms | REQ-F-010 | P2 | TASK-002 | **In review** | agent | ITEST-005 |
+| TASK-005 | Dispatch board — one shared damage and repair list | REQ-F-007, REQ-NF-007 | P1 | TASK-002 | **Done** | agent | ATEST-007, ITEST-003, PTEST-002, UTEST-012, ITEST-002 (the ordering half) |
+| TASK-006 | Re-rank on a forecast change, keeping the previous order | REQ-F-004, AC-005 | P1 | TASK-003 | **Done** | agent | ATEST-005, ITEST-004 |
+| TASK-007 | Record a crew placement against the ranking | REQ-F-005, BR-001 | P1 | TASK-003 | **Done** | agent | E2E-001, FTEST-005 (the placement half) |
+| TASK-008 | Dismiss a false alarm in one action | REQ-F-008, REQ-F-009, AC-008 | P1 | TASK-005 | **Done** | agent | UTEST-011 |
+| TASK-009 | Switch between several loaded storms | REQ-F-010 | P2 | TASK-002 | **Done** | agent | ITEST-005 |
 | TASK-010 | Wire the **remaining** fitness function into the build gate | FF-003 | P1 | — | **Done** | agent | — (the register is the assertion) |
 
 **Status values:** Not started · In progress · Blocked · In review · Done · Rejected
@@ -306,6 +306,48 @@ screen* is when the views are in another process, how clause (a) is measured now
 sense cannot occur, and — the one that is a real contradiction if left undecided — that *reads a
 source file* means an `open` and not a `stat`, because `integrity()` must stat all five files on a
 render path to satisfy clause (b). Twenty-three entries are now open and none is accepted.
+
+**Every task is Done. TASK-005 to TASK-009 were closed in one round on 2026-08-16, and the way
+that round is weakest is worth stating before the way it is strong.** A single agent run reviewed
+all five against their own done criteria, ran ten directed checks, and **two failed**. The two
+that failed belong to TASK-007 and TASK-009 — the two tasks nobody had ever reviewed — and **the
+same run that found them fixed them and then signed the tasks off.** That is the weakest
+separation `review-log.md` has recorded; it is stated in both rows and in the Q-026 note under
+them rather than left to be inferred from the *Reviewer* column. TASK-005, TASK-006 and TASK-008
+are cleaner: the run neither wrote nor fixed them, and their checks **held**.
+
+**Both failures were live on an untouched tree and neither needed a mutation.** A crew label of
+one U+200B or U+FEFF was answered `201` by `POST /placements` and written into
+`decision_records`, where BR-004 means a correction is a new row — so an invisible crew name
+stays in the regulator's artefact for ever. A storm named one U+00A0 was answered `201` and
+stored, and `ScenarioSwitcher` — the screen REQ-F-010 exists for — drew a row with no visible
+label. `'   '` was refused at both, which is what made the rule look present. **CHG-039** records
+it and migration **016** closes it: one alphabet in `store/blanks.py`, in the schema as
+`char(...)`, and in `frontend/lib/blank.ts`. Removing 016 turns **60** tests red.
+
+**The sharpest part is why CHG-037 did not prevent it.** `store/scenarios._WHITESPACE` and
+`scenarios_identity_shape` enumerated the *identical* six ASCII characters, so the service and
+the store agreed with each other perfectly and were wrong the same way, and the test was
+parametrised over exactly those six. **Two layers can agree and both be wrong, and a tie between
+them proves only that nobody has moved one.** That row is now in `AGENT.md`.
+
+**Three things about the gate were also wrong, and none of them is a code defect.** `ci/gate.sh`
+did not exist, although `cicd-pipeline.md` describes it in full and calls it *the right shape for
+this project* — so *the gate is green* was a claim assembled by hand and eleven rounds each
+recited a slightly different list. Stage 7, the trigger check the pipeline deliberately separates
+from stage 4, had no implementation; `ci/triggers.py` is it, and it applies every migration to an
+empty database before issuing a real `UPDATE`. And **one test was skipped whose reason had
+expired six tasks earlier** — ITEST-001's ranking half, skipped in TASK-002 because the scorer did
+not exist and still skipped long after TASK-003 shipped it. `cicd-pipeline.md`'s own rule is that
+a skipped test is a finding, not a fix. The suite now has **634 tests and no skips**.
+
+**Done is not the same as decided. Twenty-four change entries are open and none is accepted** —
+CHG-016 to CHG-039, minus the seven accepted at TASK-001 to TASK-003. Two of them contradict each
+other (CHG-034 and CHG-035), and one records a defect deliberately left unfixed: `api/
+recommendations.py` accepts one U+200B as the **required** justification for a `change` or a
+`reject` and writes it to `decision_records`. That is TASK-004's column, TASK-004 is Done, and
+CHG-024's rule is that an observation is recorded rather than smuggled into a remediation for
+something else.
 
 **TASK-010 shrank, and TASK-002 grew, at that review** (CHG-010). FF-001 and FF-006 move into
 TASK-002, which is the task that first creates enough modules for an import cycle to exist and

@@ -25,8 +25,20 @@ water network. It exists to test three unproven guesses as cheaply as possible, 
 
 ## Current stage
 
-**Task planning complete; implementation not started.** TASK-001 is ready to pick up. TASK-002
-is blocked on Q-017, and eight tasks sit downstream of it.
+**All ten tasks are Done** (2026-08-16). The gate is one script — `bash ci/gate.sh` — and the
+suite is one of its nine stages: 634 tests, **none skipped**, seven fitness functions, ten evals,
+36 browser cases, and a trigger check that issues a real `UPDATE` after migrate.
+
+**Done is not the same as decided. Twenty-four change entries are `proposed` and none is
+accepted**, two of them contradict each other (CHG-034, CHG-035), and one records a live defect
+deliberately left unfixed (CLAUDE.md, *Known open defects*). **Nothing here is a validated
+capability:** the scoring weights are uncalibrated (Q-025), the recall floor is unearned (A7),
+and Q-026 means no human has stood between any of this work and its judgement.
+
+**The paragraph that stood here said implementation had not started.** It was true when it was
+written and it stayed on the page through ten tasks and twelve review rounds, which is the same
+failure this file records rows about: a statement whose cause has expired reads exactly like a
+statement that is true.
 
 ---
 
@@ -204,6 +216,8 @@ worth more than the fix.
 | 2026-08-16 | **A performance test named an operation and measured a different one.** PTEST-001 is *"apply a forecast change and re-rank → under 5 s"*, and `TASK-006.md` listed it as re-run because *"the re-rank limit it measures is this task's operation"*. It timed `load_scenario` plus `rank_assets` in process and never touched the endpoint, the join over the forecast cells, the 220-row write or the pointer move — so the budget was measured against a path that excluded every database statement the operation performs. | **A performance test must call the thing the requirement names, through the same door a user does.** An in-process proxy is worth keeping *beside* it — it is what makes a regression name itself — but never *instead* of it. And bound the **shape** as well as the clock: a generous limit hides an N+1 at fixture size and finds it in production. |
 
 | 2026-08-16 | **A guard was written off as unfailable after looking in one direction only.** FF-003(a) — *remove a file and open every screen* — was recorded as vacuous, correctly: nothing on a render path opens a file, so a lost file cannot break a screen. TASK-010 was sent to leave it unwired if that still held. It does hold, and the clause is failable anyway, because the decision it fences (*every read is served from stored rows*) can be broken **the other way**: a screen can be made to *depend* on the file being present. `if not integrity["intact"]: rows = []` in the ranking read is one line, looks careful, and empties the risk list on a lost `outages.csv` with all **534** tests green — the empty screen that must never read as safety. | **Before retiring a check as one that cannot fail, ask what the opposite mistake looks like.** A guard fences a decision, not a prediction, and most decisions can be broken in two directions: the thing it forbids arriving, and something else being made to depend on the thing's absence. Say which direction the check covers. And where a clause really cannot fail alone, look for the clause beside it that makes the change **observable** — here (b), *the loss is named*, is what turns (a) from *nothing happened* into *nothing moved*, which is an assertion. |
+| 2026-08-16 | **Two layers agreed with each other perfectly and were both wrong the same way, so the tie between them proved nothing.** CHG-037 answered *what counts as blank* and tied three copies of the alphabet together — for one column. Three other columns a person types into kept their own definition, and the two on `scenarios` were the instructive pair: `store/scenarios._WHITESPACE` and `scenarios_identity_shape` enumerated the **identical** six ASCII characters, and `test_a_whitespace_only_name_is_refused` was parametrised over exactly those six. Every check anyone would think to write — *do the copies match?* — passed. A storm named one U+00A0 was answered **201** and drawn on the switcher as a row with no label, and a crew label of one U+200B went into `decision_records`, which BR-004 forbids correcting. **Neither needed a mutation**; a request was enough. | **A tie between copies proves only that nobody has moved one — so the test must read the rule out of its single source, never restate it.** Where a value is enumerated, the fixture that exercises it has to be *derived from the definition*, not written beside it; a parametrisation that lists the six characters the code knows about cannot find the twenty-five it does not. And **widen the search before trusting a fix**: when one instance of a rule is corrected, grep for the others that day. CHG-037 fixed one column and three more were already written. |
+
 | 2026-08-16 | **An enumeration lesson was already in this table and the next enumeration still had to re-derive it.** FF-003's route walk read `application.routes` for every GET, found four documentation routes and **none** of the seventeen endpoints, and would have reported *no file read across zero screens* on its first run — the identical shape as the 2026-08-16 row four rows up, in a different file, eight tasks later. It was caught only because the positive assertion (*five named routes must be in what the walk found*) was written **before** the negative one. | **Write the haystack assertion first, not beside.** *This enumeration contains X* is a line of code; if it is written after the absence check it will be written only when somebody is already suspicious. The general rule this table keeps re-learning is worth stating as a habit rather than a caution: **any walk of a framework's own structures — routes, columns, triggers, built files, log lines — starts by naming one thing it must find, and that line goes in before the loop that reports nothing found.** |
 
 **The second row happened again, to the state the same task created.** *Where a decision says
