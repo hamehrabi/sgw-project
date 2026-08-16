@@ -11,10 +11,19 @@ they are worth is `scoring/`'s, and TASK-003's.
 import csv
 import io
 import json
+from datetime import UTC, datetime
 
 from app.loader import defects
 from app.loader.matching import merge_by_site_and_name
-from app.loader.records import Finding, LoadedAsset, LoadedOutage, LoadFailed, LoadResult
+from app.loader.records import (
+    Finding,
+    ForecastRevision,
+    LoadedAsset,
+    LoadedForecast,
+    LoadedOutage,
+    LoadFailed,
+    LoadResult,
+)
 
 REQUIRED_FILES = ("manifest.json", "assets.csv", "maintenance.csv", "weather.csv", "outages.csv")
 ASSET_TYPES = frozenset({"substation", "line", "plant", "pump"})
@@ -110,37 +119,101 @@ def _read_assets(files: dict[str, bytes]) -> list[LoadedAsset]:
     return assets
 
 
-def _apply_weather(assets: list[LoadedAsset], files: dict[str, bytes]) -> Finding | None:
-    """Defect 3 — wind comes from the forecast grid, never from the station column."""
-    rows = _rows(files, "weather.csv")
+def _chronological(valid_time: str) -> tuple[int, str]:
+    """A total order over forecast times.
 
-    grid: dict[str, dict] = {}
+    ISO-8601 strings usually sort chronologically as text, and "usually" is how the rest of
+    this repository ended up with an order that was not one (CHG-018). The times are parsed;
+    anything unparseable sorts after everything that parsed, by its own text, so the series is
+    still total and still the same on every run.
+    """
+    try:
+        parsed = datetime.fromisoformat(valid_time.replace("Z", "+00:00"))
+    except ValueError:
+        return (1, valid_time)
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=UTC)
+    return (0, parsed.astimezone(UTC).isoformat())
+
+
+def _forecast_series(files: dict[str, bytes]) -> list[ForecastRevision]:
+    """Every distinct forecast time in `weather.csv`, as a complete grid each (CHG-025).
+
+    **Each revision carries every cell the file has ever named**, not only the cells that got a
+    new row at that time: a forecast grid square that goes quiet has not stopped forecasting,
+    and blanking it would make its assets UNSCORED at every revision after the first — the list
+    would not re-rank, it would empty. The carried value keeps the `valid_time` it was issued
+    at, so nothing claims to be more current than it is.
+
+    Carrying forward happens **once, here, at load**. It is a decision about what a revision
+    contains, and deliberately not a read-time fallback: §7.3 forbids a read that quietly
+    answers with a different revision than the one it was asked for.
+    """
+    observed: dict[str, dict[str, LoadedForecast]] = {}
+    for row in _rows(files, "weather.csv"):
+        cell = (row.get("grid_cell_id") or "").strip()
+        code = (row.get("asset_id") or "").strip()
+        when = (row.get("valid_time") or "").strip()
+        # Asset-linked rows say which cell an asset is in; their gust column is the one the
+        # source PRD measured as 97% empty and is never a forecast (defect 3).
+        if code or not cell or not when:
+            continue
+        observed.setdefault(when, {}).setdefault(
+            cell,
+            LoadedForecast(
+                grid_cell_id=cell,
+                valid_time=when,
+                wind_gust_mph=_number(row.get("wind_gust_mph"), float),
+                rainfall_in=_number(row.get("rainfall_in"), float),
+            ),
+        )
+
+    carried: dict[str, LoadedForecast] = {}
+    series = []
+    for revision, when in enumerate(sorted(observed, key=_chronological)):
+        carried.update(observed[when])
+        series.append(
+            ForecastRevision(
+                forecast_revision=revision,
+                valid_time=when,
+                cells=tuple(carried[cell] for cell in sorted(carried)),
+            )
+        )
+    return series
+
+
+def _apply_weather(
+    assets: list[LoadedAsset], files: dict[str, bytes], series: list[ForecastRevision]
+) -> Finding | None:
+    """Defect 3 — wind comes from the forecast grid, never from the station column.
+
+    The gust an asset carries is **revision 0's**, taken from the same series the store keeps,
+    so the joined asset view and the revision-0 ranking cannot disagree about what was loaded.
+    """
     cell_of_asset: dict[str, str] = {}
     station_rows = station_values = 0
 
-    for row in rows:
+    for row in _rows(files, "weather.csv"):
         cell = (row.get("grid_cell_id") or "").strip()
         code = (row.get("asset_id") or "").strip()
-        gust = _number(row.get("wind_gust_mph"), float)
-
-        if code:
-            # An asset-linked row says which cell the asset is in. Its gust column is the
-            # one the source PRD measured as 97% empty, and is deliberately not read.
-            station_rows += 1
-            station_values += gust is not None
-            if cell:
-                cell_of_asset[code] = cell
+        if not code:
             continue
-        if cell and cell not in grid:
-            grid[cell] = {"gust": gust, "rain": _number(row.get("rainfall_in"), float)}
+        # An asset-linked row says which cell the asset is in. Its gust column is the
+        # one the source PRD measured as 97% empty, and is deliberately not read.
+        station_rows += 1
+        station_values += _number(row.get("wind_gust_mph"), float) is not None
+        if cell:
+            cell_of_asset[code] = cell
 
+    grid = {cell.grid_cell_id: cell for cell in series[0].cells} if series else {}
     for asset in assets:
         cell = next((cell_of_asset[c] for c in asset.external_ids if c in cell_of_asset), None)
         if cell is None:
             continue
         asset.grid_cell_id = cell
-        asset.wind_gust_mph = grid.get(cell, {}).get("gust")
-        asset.rainfall_in = grid.get(cell, {}).get("rain")
+        forecast = grid.get(cell)
+        asset.wind_gust_mph = forecast.wind_gust_mph if forecast else None
+        asset.rainfall_in = forecast.rainfall_in if forecast else None
 
     return defects.gusts_absent_from_station_rows(station_rows, station_values)
 
@@ -196,7 +269,8 @@ def load_scenario(files: dict[str, bytes]) -> LoadResult:
         if finding:
             findings.append(finding)
 
-    weather_finding = _apply_weather(assets, files)
+    series = _forecast_series(files)
+    weather_finding = _apply_weather(assets, files, series)
     if weather_finding:
         findings.append(weather_finding)
 
@@ -223,6 +297,7 @@ def load_scenario(files: dict[str, bytes]) -> LoadResult:
         storm_name=manifest["storm_name"],
         forecast_issued_at=manifest["forecast_issued_at"],
         assets=assets,
+        forecast_revisions=series,
         outages=outages,
         failures=[o for o in outages if o.asset_external_id],
         service_areas=service_areas,

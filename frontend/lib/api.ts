@@ -78,10 +78,23 @@ export interface Integrity {
   affects: string[]
 }
 
+/** One forecast the prepared storm carries, and the time it was issued for. */
+export interface ForecastRevisionEntry {
+  forecast_revision: number
+  valid_time: string
+}
+
 export interface Scenario {
   scenario_id: string
   name: string
   forecast_revision: number
+  /**
+   * Every revision this storm carries — a property of the prepared file, not a running
+   * total. The control offers what exists and nothing else.
+   */
+  forecast_revisions: ForecastRevisionEntry[]
+  /** Null once the storm is at its last forecast: there is nothing further to apply. */
+  next_forecast_revision: number | null
   loaded_at: string
   forecast_issued_at: string | null
   /** Stated always, never only when bad — silence must not teach the reader "fresh". */
@@ -89,6 +102,19 @@ export interface Scenario {
   stale: boolean
   stale_after_hours: number
   integrity: Integrity
+}
+
+/** What applying a forecast change produced. A new revision — never a rewritten one. */
+export interface ForecastRevisionApplied {
+  scenario_id: string
+  forecast_revision: number
+  /** Still readable, and still the order any decision was made against (AC-005). */
+  previous_forecast_revision: number
+  valid_time: string
+  computed_at: string
+  ranked: number
+  unscored: number
+  next_forecast_revision: number | null
 }
 
 export interface AssetPage {
@@ -216,7 +242,26 @@ export const dispatch = {
 }
 
 export const scenarios = {
-  risks: (id: string) => request<Ranking>(`/api/v1/scenarios/${id}/risks`),
+  /**
+   * Omitting `forecastRevision` asks for the storm's current one. Passing an earlier value
+   * returns that earlier ranking **unchanged** (AC-005); passing one the storm does not carry
+   * is a 404 and never a quiet substitution of the current list.
+   */
+  risks: (id: string, forecastRevision?: number) =>
+    request<Ranking>(
+      forecastRevision === undefined
+        ? `/api/v1/scenarios/${id}/risks`
+        : `/api/v1/scenarios/${id}/risks?forecast_revision=${forecastRevision}`,
+    ),
+
+  /**
+   * Apply the storm's next forecast change and re-rank (REQ-F-004). A write that produces a
+   * new revision; nothing that was ranked before is altered, and no crew is moved (BR-001).
+   */
+  applyNextForecast: (id: string) =>
+    request<ForecastRevisionApplied>(`/api/v1/scenarios/${id}/forecast-revisions`, {
+      method: 'POST',
+    }),
 
   read: (id: string) => request<Scenario>(`/api/v1/scenarios/${id}`),
   assets: (id: string) => request<AssetPage>(`/api/v1/scenarios/${id}/assets`),

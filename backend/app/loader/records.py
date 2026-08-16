@@ -43,6 +43,35 @@ class LoadedAsset:
     match_status: str = "matched"
 
 
+@dataclass(frozen=True)
+class LoadedForecast:
+    """One grid cell's forecast, and **when that value was issued**.
+
+    `valid_time` is not always the revision's own time. A cell with no row at a later forecast
+    keeps the value it last had, and BR-003 requires the age of a value to travel with it — a
+    six-hour-old gust rendered as current is the quiet wrongness REQ-NF-003 exists to prevent.
+    """
+
+    grid_cell_id: str
+    valid_time: str
+    wind_gust_mph: float | None = None
+    rainfall_in: float | None = None
+
+
+@dataclass(frozen=True)
+class ForecastRevision:
+    """One forecast time, as a complete grid (CHG-025).
+
+    REQ-F-004's change is *inside* the prepared scenario: `weather.csv` carries a `valid_time`
+    per row, and each distinct time among the cell-level rows is one revision, numbered from 0
+    in chronological order.
+    """
+
+    forecast_revision: int
+    valid_time: str
+    cells: tuple[LoadedForecast, ...] = ()
+
+
 @dataclass
 class LoadedOutage:
     """A historical outage row. Replay only — it feeds nothing at run time."""
@@ -62,6 +91,9 @@ class LoadResult:
     storm_name: str
     forecast_issued_at: str
     assets: list[LoadedAsset] = field(default_factory=list)
+    # Chronological, revision 0 first. Revision 0 is the forecast the assets above carry, so
+    # the two can never disagree about what was loaded (CHG-025).
+    forecast_revisions: list[ForecastRevision] = field(default_factory=list)
     outages: list[LoadedOutage] = field(default_factory=list)
     failures: list[LoadedOutage] = field(default_factory=list)
     service_areas: dict[str, int] = field(default_factory=dict)

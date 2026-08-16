@@ -11,57 +11,16 @@ attacker wanted done.
 """
 
 import hashlib
-import json
 import logging
 import shutil
 import uuid
-from dataclasses import dataclass
 from pathlib import Path
 
-from app.api import errors
+from app.api import errors, rerank
 from app.api.events import log_event
 from app.loader.load import load_scenario
 from app.loader.records import LoadFailed
-from app.scoring import references
-from app.scoring.rank import rank_assets
 from app.store import rankings, scenarios
-
-
-@dataclass
-class _Scorable:
-    """A stored asset row, in the shape the scorer reads.
-
-    The scorer takes values, not database rows — it knows nothing about the store, which is
-    what keeps it a pure function and lets a trained model replace it without touching either
-    side (ADR-005, `ai-boundary-spec.md` §2).
-    """
-
-    external_ids: list[str]
-    name: str
-    type: str
-    flood_zone: str | None
-    install_year: int | None
-    condition: str | None
-    condition_observed_at: str | None
-    condition_estimated: bool
-    wind_gust_mph: float | None
-
-
-def _as_scorable(rows) -> list[_Scorable]:
-    return [
-        _Scorable(
-            external_ids=json.loads(row["external_ids"]),
-            name=row["name"] or "",
-            type=row["type"],
-            flood_zone=row["flood_zone"],
-            install_year=row["install_year"],
-            condition=row["condition"],
-            condition_observed_at=row["condition_observed_at"],
-            condition_estimated=bool(row["condition_estimated"]),
-            wind_gust_mph=row["wind_gust_mph"],
-        )
-        for row in rows
-    ]
 
 ALLOWED_FILES = frozenset(
     {"manifest.json", "assets.csv", "maintenance.csv", "weather.csv", "outages.csv"}
@@ -155,23 +114,24 @@ def run_parse(connection, upload_id, directory, files, *, name, source_note, act
     # Rank at load, store the result, and serve reads from it. Scoring inside a request would
     # make the same ranking recomputable — and therefore able to differ — between two readers
     # of the same revision (`technical-spec.md` §6).
-    stored_assets = scenarios.assets_for(connection, scenario_id)
-    ranked = rank_assets(_as_scorable(stored_assets))
-    by_code = {code: row["id"] for row in stored_assets for code in json.loads(row["external_ids"])}
+    #
+    # The same pass REQ-F-004's re-rank uses, at revision 0. Two code paths producing two
+    # orders would make AC-005's comparison meaningless.
+    scoring = rerank.score_revision(connection, scenario_id, 0)
     rankings.save_ranking(
         connection,
         scenario_id=scenario_id,
         forecast_revision=0,
-        ranked=[(by_code[item.external_ids[0]], item) for item in ranked],
-        weight_set_version=references.WEIGHT_SET_VERSION,
+        ranked=scoring.pairs,
+        weight_set_version=scoring.weight_set_version,
     )
     log_event(
         "SCENARIO_RANKED",
         scenario_id=scenario_id,
         forecast_revision=0,
-        ranked=sum(item.score is not None for item in ranked),
-        unscored=sum(item.score is None for item in ranked),
-        weight_set_version=references.WEIGHT_SET_VERSION,
+        ranked=scoring.ranked,
+        unscored=scoring.unscored,
+        weight_set_version=scoring.weight_set_version,
         outcome="ranked",
     )
     log_event(

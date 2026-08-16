@@ -1,0 +1,6 @@
+asset_id,name,type,lat,lon,install_year,flood_zone,condition_rating,condition_source,condition_date
+SS-ALPHA,Alpha Substation,substation,34.1000,-118.1000,1990,VE,3,inspection,2026-01-15
+SS-BRAVO,Bravo Substation,substation,34.2000,-118.2000,1990,VE,3,inspection,2026-01-15
+LN-CHARLIE,Charlie Feeder 4,line,34.3000,-118.3000,2015,X,5,inspection,2026-07-01
+PS-DELTA,Delta Pump Station,pump,34.4000,-118.4000,1999,AE,2,inspection,2021-03-10
+PL-ECHO,Echo Water Plant,plant,34.5000,-118.5000,1980,VE,,,

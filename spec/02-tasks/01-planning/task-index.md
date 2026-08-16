@@ -13,7 +13,7 @@
 | TASK-003 | Ranked risk list with plain-words reasons, scored by a deterministic rule (ADR-005) | REQ-F-002, REQ-F-003, BR-002, FF-007 | P0 | TASK-002 | **Done** | agent | ATEST-003, ATEST-004, UTEST-009, UTEST-010, FTEST-004, EVAL-001, PTEST-001 |
 | TASK-004 | Accept, change, or reject a recommendation, writing the append-only record | REQ-F-006, REQ-F-009, BR-001, BR-004, FF-004, FF-005 | P1 | TASK-003 | **Done** | agent | ATEST-006, ATEST-008, ITEST-002, FTEST-005, STEST-008 |
 | TASK-005 | Dispatch board — one shared damage and repair list | REQ-F-007, REQ-NF-007 | P1 | TASK-002 | **In review** | agent | ATEST-007, ITEST-003, PTEST-002, UTEST-012, ITEST-002 (the ordering half) |
-| TASK-006 | Re-rank on a forecast change, keeping the previous order | REQ-F-004 | P1 | TASK-003 | Not started | agent | ATEST-005, ITEST-004 |
+| TASK-006 | Re-rank on a forecast change, keeping the previous order | REQ-F-004, AC-005 | P1 | TASK-003 | **In review** | agent | ATEST-005, ITEST-004 |
 | TASK-007 | Record a crew placement against the ranking | REQ-F-005 | P1 | TASK-003 | Not started | agent | E2E-001 |
 | TASK-008 | Dismiss a false alarm in one action | REQ-F-008 | P1 | TASK-005 | Not started | agent | UTEST-011 |
 | TASK-009 | Switch between several loaded storms | REQ-F-010 | P2 | TASK-002 | Not started | agent | ITEST-005 |
@@ -84,6 +84,22 @@ rather than changing it inside a remediation for something else. Suite 294 + 1 s
 runs, whole gate green, every fix mutation-checked (`TASK-005.md`, *What the third review
 found*). **TASK-006 must not be started on the assumption that TASK-005 is accepted** — three
 reviews have each found something the previous one did not.
+
+**TASK-006 is built and In review, and it was started without assuming TASK-005 is accepted** —
+it touches none of TASK-005's tables and none of its code. `TASK-006.md` is written, ATEST-005
+and ITEST-004 exist as 25 executable cases, migration **010** is shipped with an up and a down
+(008 and 009 were already taken by TASK-005's two remediations), and the whole gate is green.
+**Every one of the 25 cases was mutation-checked and one of them was wrong** — the store-level
+*never rewrites n* test raised the right exception type for the wrong reason, and passed with
+the new trigger removed. It is fixed and now reads the rule out of the refusal.
+
+**Two more change entries are open, bringing the total to eleven, and none is accepted.**
+**CHG-025** (a scenario's forecast series had nowhere to live, and nothing decided what "the
+next forecast change" is — `weather.csv`'s `valid_time` column and the ~5,000 forecast rows the
+fixture is sized at were parsed and thrown away) and **CHG-026** (nothing stopped an earlier
+revision being rewritten: `unique (scenario_id, asset_id, forecast_revision)` refuses a *second*
+row and says nothing about an `UPDATE` to the first, so AC-005's *"the previous order remains
+retrievable"* rested on no code happening to issue one).
 
 **The ordering defect was never TASK-005's alone**, which is why this row matters to TASK-004 as
 well: `decision_records` has been intermittently mis-ordered since migration 006, and

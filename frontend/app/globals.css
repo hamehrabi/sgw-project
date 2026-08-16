@@ -216,3 +216,24 @@ body {
 .job__count { color: var(--muted); font-size: 0.88rem; }
 .job__reports { margin: 0; padding-left: 1.1rem; font-size: 0.9rem; }
 .job__time { font-variant-numeric: tabular-nums; color: var(--muted); }
+
+/* --- TASK-006: applying a forecast change, and comparing the orders --- */
+.revisions {
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 0.6rem 0.8rem;
+  margin-bottom: 1rem;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+.revisions button { padding: 0.35rem 0.7rem; font: inherit; cursor: pointer; }
+.revisions button:disabled { cursor: not-allowed; }
+.revisions p { flex-basis: 100%; margin: 0; color: var(--muted); font-size: 0.88rem; }
+/* Every earlier order stays one click away: re-ranking never destroys what was shown. */
+.revisions__list { flex-basis: 100%; list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 0.5rem; }
+.revisions__list li { display: flex; align-items: center; gap: 0.3rem; font-size: 0.88rem; }
+/* The revision on screen is named in words as well as marked — never colour alone. */
+.revisions__list button[aria-current='true'] { font-weight: 700; text-decoration: underline; }
+.revisions__time { color: var(--muted); font-variant-numeric: tabular-nums; }

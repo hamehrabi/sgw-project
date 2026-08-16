@@ -10,6 +10,8 @@ import sqlite3
 import uuid
 from datetime import UTC, datetime
 
+from app.store import forecasts
+
 
 def _now() -> str:
     return datetime.now(UTC).isoformat()
@@ -90,6 +92,11 @@ def save_loaded_scenario(connection, result, *, upload_id, name, source_note, lo
                 for asset in result.assets
             ],
         )
+        # The whole forecast series, in the same transaction (CHG-025). A storm without its
+        # forecasts is a storm REQ-F-004 cannot re-rank, and half a series is worse than none.
+        forecasts.save_series(
+            connection, scenario_id, result.forecast_revisions, created_at=_now()
+        )
         connection.execute(
             "update scenario_uploads set status = 'ready', scenario_id = ?, finished_at = ?"
             " where id = ?",
@@ -115,9 +122,50 @@ def find_upload_for_scenario(connection, scenario_id) -> sqlite3.Row | None:
 
 
 def assets_for(connection, scenario_id) -> list[sqlite3.Row]:
-    """Every read is scoped by `scenario_id`. Two storms must never blend into one view."""
+    """The joined asset view — the storm **as loaded**, at forecast revision 0.
+
+    Every read is scoped by `scenario_id`. Two storms must never blend into one view.
+
+    The join adds one thing: the `valid_time` of the gust the asset carries, so BR-003's *every
+    value shows its source and its age* is true of the forecast too. It is deliberately pinned
+    to revision 0 — this view is REQ-F-001's picture of what was loaded, and re-dating it when
+    a later forecast is applied would be rewriting revision n, which is the one thing AC-005
+    forbids. The ranking is where a revision's own numbers live.
+    """
     return connection.execute(
-        "select * from assets where scenario_id = ? order by id", (scenario_id,)
+        "select a.*, f.valid_time as forecast_valid_time"
+        " from assets a"
+        " left join scenario_forecast_cells f"
+        "   on f.scenario_id = a.scenario_id and f.grid_cell_id = a.grid_cell_id"
+        "   and f.forecast_revision = 0"
+        " where a.scenario_id = ? order by a.id",
+        (scenario_id,),
+    ).fetchall()
+
+
+def assets_with_forecast(connection, scenario_id, forecast_revision) -> list[sqlite3.Row]:
+    """Every asset in the storm, carrying **one revision's** forecast.
+
+    The scoring input for that revision, and the *only* one — there is no fallback to an
+    earlier revision's gust. An asset whose cell the revision does not cover arrives with
+    `wind_gust_mph` null and becomes UNSCORED with the missing input named, which is the
+    honest answer; quietly reusing the last gust would produce a rank that looks comparable
+    with the others and is not (ADR-005, FTEST-004).
+
+    Carrying a value forward when the *file* stops mentioning a cell is a different thing and
+    happens once at load, where the value keeps the time it was issued (CHG-025).
+    """
+    return connection.execute(
+        "select a.id, a.external_ids, a.name, a.type, a.flood_zone, a.install_year,"
+        " a.condition, a.condition_source, a.condition_observed_at, a.condition_estimated,"
+        " a.grid_cell_id, f.wind_gust_mph as wind_gust_mph,"
+        " f.valid_time as forecast_valid_time"
+        " from assets a"
+        " left join scenario_forecast_cells f"
+        "   on f.scenario_id = a.scenario_id and f.grid_cell_id = a.grid_cell_id"
+        "   and f.forecast_revision = ?"
+        " where a.scenario_id = ? order by a.id",
+        (forecast_revision, scenario_id),
     ).fetchall()
 
 

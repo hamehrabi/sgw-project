@@ -1,0 +1,15 @@
+{
+  "scenario_id": "STORM-TRACK-SHIFT",
+  "storm_name": "Track shift",
+  "forecast_issued_at": "2026-08-15T00:00:00Z",
+  "files": ["assets.csv", "maintenance.csv", "weather.csv", "outages.csv"],
+  "row_counts": {
+    "assets.csv": 5,
+    "maintenance.csv": 3,
+    "weather.csv": 17,
+    "outages.csv": 2
+  },
+  "service_areas": [
+    { "service_area_id": "SA-INLAND", "customer_count": 9000 }
+  ]
+}

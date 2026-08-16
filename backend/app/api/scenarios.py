@@ -11,9 +11,9 @@ import logging
 from fastapi import APIRouter, File, Form, Request, UploadFile
 from fastapi.responses import JSONResponse
 
-from app.api import errors, uploads, views
+from app.api import errors, rerank, uploads, views
 from app.api.events import log_event
-from app.store import decisions, rankings, scenarios
+from app.store import decisions, forecasts, rankings, scenarios
 
 router = APIRouter(prefix="/api/v1/scenarios", tags=["scenarios"])
 
@@ -137,6 +137,105 @@ async def read_scenario(request: Request, scenario_id: str):
         scenario,
         scenarios.find_upload_for_scenario(connection, scenario_id),
         request.app.state.config,
+        # `ForecastRevisionControl` needs "current and available revisions" — a control that
+        # guessed the range would offer a forecast this storm does not carry.
+        revisions=forecasts.revisions(connection, scenario_id),
+    )
+
+
+@router.post("/{scenario_id}/forecast-revisions", status_code=201)
+async def apply_forecast_revision(request: Request, scenario_id: str) -> JSONResponse:
+    """Apply the scenario's next forecast change and re-rank (REQ-F-004, AC-005).
+
+    **A write that produces a new revision, and never a rewrite of the old one.** Both roles
+    may do it (`technical-spec.md` §7.2): adjusting the plan when the forecast moves is the
+    product, not an administrative action.
+
+    **The change comes from inside the prepared scenario.** REQ-F-004 says so, and it is a
+    safety property rather than a convenience: a gust supplied by the caller would make the
+    ranking a function of untrusted input, and this endpoint takes no body at all.
+
+    **No `decision_records` row.** `kind` is a closed enumeration of six values and none of
+    them is *re-ranked*; the new ranking gets its `recommendation` row when it is delivered,
+    which is FF-005 unchanged. Inventing a seventh kind would be a schema decision this task
+    does not own — the reasoning CHG-021 used for `duplicate`, and CHG-015 before it.
+
+    **Nothing leaves the platform.** A re-rank moves no crew and sends no command (BR-001,
+    BR-005).
+    """
+    connection = request.app.state.db
+    scenario = scenarios.find(connection, scenario_id)
+    if scenario is None:
+        return errors.error(404, "not_found", "That storm could not be found.")
+
+    current = scenario["forecast_revision"]
+    following = forecasts.next_after(connection, scenario_id, current)
+    if following is None:
+        # 409 rather than 404: the collection in the path exists, and what is in conflict is
+        # the storm's state — it is already at its last forecast. Repeating the current
+        # forecast as a new revision would be a ranking nobody's data supports.
+        return errors.error(
+            409,
+            "no_further_forecast",
+            f"This storm carries no forecast after revision {current}. A newer forecast "
+            f"arrives by loading a newer prepared scenario.",
+        )
+
+    revision = following["forecast_revision"]
+    scoring = rerank.score_revision(connection, scenario_id, revision)
+
+    try:
+        computed_at = rankings.save_revision(
+            connection,
+            scenario_id=scenario_id,
+            from_revision=current,
+            to_revision=revision,
+            ranked=scoring.pairs,
+            weight_set_version=scoring.weight_set_version,
+        )
+    except Exception:
+        # Neither the ranking nor the pointer moved — `save_revision` is one transaction. The
+        # operator sees a failure and the storm still ranks at the revision it did before.
+        log_event(
+            "DB_WRITE_FAILED",
+            level=logging.ERROR,
+            user_id=request.state.user["id"],
+            scenario_id=scenario_id,
+            subject="forecast_revision",
+            outcome="no_revision_written",
+        )
+        raise
+
+    log_event(
+        "SCENARIO_RERANKED",
+        user_id=request.state.user["id"],
+        scenario_id=scenario_id,
+        forecast_revision=revision,
+        previous_forecast_revision=current,
+        valid_time=following["valid_time"],
+        ranked=scoring.ranked,
+        unscored=scoring.unscored,
+        weight_set_version=scoring.weight_set_version,
+        outcome="reranked",
+    )
+
+    remaining = forecasts.next_after(connection, scenario_id, revision)
+    return JSONResponse(
+        status_code=201,
+        content={
+            "scenario_id": scenario_id,
+            "forecast_revision": revision,
+            # Named in the response, because the whole point of AC-005 is that the reader can
+            # go back and ask for it.
+            "previous_forecast_revision": current,
+            "valid_time": following["valid_time"],
+            "computed_at": computed_at,
+            "ranked": scoring.ranked,
+            "unscored": scoring.unscored,
+            "next_forecast_revision": (
+                remaining["forecast_revision"] if remaining else None
+            ),
+        },
     )
 
 

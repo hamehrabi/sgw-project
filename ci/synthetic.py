@@ -76,9 +76,13 @@ def synthetic_scenario(
                     for i in range(1, assets + 1)]
     for cell in cells:
         weather_rows.append(f"{cell},,{ISSUED_AT},{rng.randint(45, 135)},{rng.random():.2f}")
+    # The remaining rows are LATER forecasts for the same grid — which is what a prepared
+    # scenario's ~5,000 forecast rows are for, and what REQ-F-004 re-ranks against (CHG-025).
+    # They were dated 12-14 August against an issue time of the 15th, so the storm's own
+    # "revision 0" was a forecast issued three days before the one the manifest names.
     while len(weather_rows) < forecast_rows:
         cell = rng.choice(cells)
-        stamp = f"2026-08-1{rng.randint(2, 4)}T{rng.randint(10, 23)}:00:00Z"
+        stamp = f"2026-08-1{rng.randint(5, 7)}T{rng.randint(10, 23)}:00:00Z"
         weather_rows.append(f"{cell},,{stamp},{rng.randint(40, 130)},{rng.random():.2f}")
 
     maintenance = []

@@ -14,6 +14,7 @@ import { AssetPage, Ranking, Role, Scenario, scenarios } from '@/lib/api'
 
 import { AssetTable } from './AssetTable'
 import { DispatchBoard } from './DispatchBoard'
+import { ForecastRevisionControl } from './ForecastRevisionControl'
 import { RecommendationDecision } from './RecommendationDecision'
 import { RiskList } from './RiskList'
 import { ScenarioIntegrityNotice } from './ScenarioIntegrityNotice'
@@ -26,14 +27,17 @@ export function ScenarioView({ role }: { role: Role }) {
   const [page, setPage] = useState<AssetPage | null>(null)
   const [ranking, setRanking] = useState<Ranking | null>(null)
   const [state, setState] = useState<'loading' | 'ready' | 'error'>('ready')
+  // Which forecast revision is on screen. `null` means "whichever is current" — an operator
+  // who has not gone looking should always be reading the latest advice.
+  const [viewing, setViewing] = useState<number | null>(null)
 
-  const read = useCallback(async (id: string) => {
+  const read = useCallback(async (id: string, revision: number | null) => {
     setState('loading')
     try {
       const [detail, assets, risks] = await Promise.all([
         scenarios.read(id),
         scenarios.assets(id),
-        scenarios.risks(id),
+        scenarios.risks(id, revision ?? undefined),
       ])
       setScenario(detail)
       setPage(assets)
@@ -46,12 +50,18 @@ export function ScenarioView({ role }: { role: Role }) {
   }, [])
 
   useEffect(() => {
-    if (scenarioId) void read(scenarioId)
-  }, [scenarioId, read])
+    if (scenarioId) void read(scenarioId, viewing)
+  }, [scenarioId, viewing, read])
 
   return (
     <>
-      <ScenarioUploadPanel role={role} onLoaded={setScenarioId} />
+      <ScenarioUploadPanel
+        role={role}
+        onLoaded={(id) => {
+          setViewing(null)
+          setScenarioId(id)
+        }}
+      />
 
       {scenario && (
         <>
@@ -65,6 +75,13 @@ export function ScenarioView({ role }: { role: Role }) {
           {/* The ranking first: it is what the product competes on, and what an operator
               opened this screen for. The joined view is the evidence beneath it. */}
           <h2>Ranked by risk</h2>
+          {scenario && ranking && (
+            <ForecastRevisionControl
+              scenario={scenario}
+              viewing={ranking.forecast_revision}
+              onView={setViewing}
+            />
+          )}
           <RiskList ranking={ranking} state={state} />
           {ranking && <RecommendationDecision recommendationId={ranking.recommendation_id} />}
 

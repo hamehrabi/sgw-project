@@ -25,6 +25,18 @@ REQUIRED_SOURCE_FILES = (
 )
 
 
+def _optional(row, column):
+    """A column two of the three asset reads carry.
+
+    `assets_for` and `read_ranking` both select `forecast_valid_time`; a row assembled some
+    other way should render a value with an unknown age rather than a 500 during a storm.
+    """
+    # A `sqlite3.Row` is a sequence: `column in row` would test its VALUES, not its column
+    # names, and would answer `False` for a column holding `None`.
+    names = row.keys()
+    return row[column] if column in names else None
+
+
 def _value(name, value, *, source=None, observed_at=None, estimated=False):
     """One displayable value. Source and age are structural, never optional (BR-003)."""
     return {
@@ -53,10 +65,16 @@ def values_for(row) -> list[dict]:
         ),
         # Defect 3: the gust is the forecast grid square's, and says so. An operator who
         # cannot see which cell a reading came from cannot tell it apart from a station read.
+        #
+        # `observed_at` is the forecast's own `valid_time` (CHG-025). BR-003 wants the age of
+        # every value, and this one had none — which mattered the moment a second forecast
+        # existed: a gust carried forward from six hours ago must not read as current, and a
+        # rank recomputed against a newer forecast must not sit beside the older number.
         _value(
             "wind_gust_mph",
             row["wind_gust_mph"],
             source=f"forecast grid {row['grid_cell_id']}" if row["grid_cell_id"] else None,
+            observed_at=_optional(row, "forecast_valid_time"),
         ),
         _value("flood_zone", row["flood_zone"], source="assets.csv"),
         _value("install_year", row["install_year"], source="assets.csv"),
@@ -253,13 +271,28 @@ def integrity(storage_path: str | None) -> dict:
     }
 
 
-def scenario_body(scenario_row, upload_row, config, *, now=None) -> dict:
+def scenario_body(scenario_row, upload_row, config, *, revisions=(), now=None) -> dict:
     issued_at = scenario_row["forecast_issued_at"]
     age = data_age_hours(issued_at, now) if issued_at else None
+    current = scenario_row["forecast_revision"]
+    later = [row for row in revisions if row["forecast_revision"] > current]
     return {
         "scenario_id": scenario_row["id"],
         "name": scenario_row["name"],
-        "forecast_revision": scenario_row["forecast_revision"],
+        "forecast_revision": current,
+        # Every revision this storm carries, with the forecast time behind each one. A
+        # re-rank is not "one more" — the series is a property of the prepared file, and a
+        # control that guessed at it would offer a forecast that does not exist (CHG-025).
+        "forecast_revisions": [
+            {
+                "forecast_revision": row["forecast_revision"],
+                "valid_time": row["valid_time"],
+            }
+            for row in revisions
+        ],
+        # Null once the storm is at its last forecast, so the control disables rather than
+        # offering an action that answers 409.
+        "next_forecast_revision": later[0]["forecast_revision"] if later else None,
         "loaded_at": scenario_row["loaded_at"],
         "forecast_issued_at": issued_at,
         # Stated always, never inferred (AC-010) — a screen that only mentions age when it is
