@@ -21,7 +21,71 @@
 
 | 2026-08-16 | **TASK-005 remediation** — migration 008, `store/dispatch.py`, `store/decisions.py`, `api/views.py`, `api/dispatch.py`, `lib/api.ts`, `DispatchBoard.tsx`, four executable test files and a new Playwright spec | TASK-005 / REQ-F-007, REQ-NF-007, REQ-F-009, AC-007, ADR-002, BR-004 | The agent that fixed the Block — **not a reviewer, and this row is not an acceptance** (see below) | Requirement fit · Architecture fit · Security & validation · Performance · Test evidence · Change scope | All eight defects closed, each with the mutation that now makes it red recorded in `TASK-005.md`. **The ordering fix reaches further than TASK-005**: `decision_records` had been intermittently mis-ordered since migration 006 and `latest_recommendation` could return the wrong row outright. Four change entries raised and left **proposed**: **CHG-018** (a monotonic `seq`), **CHG-019** (composite foreign keys — the Block), **CHG-020** (a job's location survives its report's dismissal), **CHG-021** (`duplicate` given a reader). Suite 264 + 1 skipped, run 12 times with no red. One instance of CHG-019's shape is knowingly **not** fixed and is named in the entry: `risk_scores.asset_id`. | **Fixed — awaiting re-review** | The six proposed entries need a human decision; TASK-006 is next and must not be started on the assumption that this is accepted |
 
+| 2026-08-16 | **TASK-005 re-reviewed after remediation**, against its own done criteria — migration 007 and 008, `store/dispatch.py`, `store/decisions.py`, `api/dispatch.py`, `api/views.py`, `DispatchBoard.tsx`, and the five executable test files including `e2e/ATEST-007.spec.ts` | TASK-005 / REQ-F-007, REQ-NF-007, AC-007, ADR-002, CHG-018 | A third agent run, which **neither wrote nor fixed** TASK-005 — but author, fixer and reviewer are still the same process (**Q-026**, see the note below) | Requirement fit · Architecture fit · Security & validation · Performance · Test evidence · Change scope | **The full gate is green — and three of four directed checks failed, each confirmed by a mutation the gate did not notice.** `pytest` 264 + 1 skipped, run **three** times with no red, so the CHG-018 ordering fix holds. **Done criterion 3 is not met**: `unique (scenario_id, location_key)` refuses only a byte-identical key, so the case- and spacing-insensitivity that *defines* "the same location" lives only in `store/dispatch.py` — this log's pre-declared **Block** condition, one review after the same condition blocked this task. Two smaller failures: the durable order CHG-018 introduced is asserted only inside one process lifetime, and the store's own location check has a clause no test ever violates. One specification gap raised and left **proposed**: **CHG-022** (a damage report belonging to no repair job is on no screen and in no figure). | **Block** | Put the normalised key in the schema, then close CHG-022; the seven proposed entries need a human decision; TASK-006 must not be started on the assumption that this is accepted |
+
 **Decision values:** Accept · Accept with follow-up · Revise · Reject · Block
+
+### The third review of TASK-005 — four checks, three of them failed
+
+**Chosen before the code was read**, from the failure shapes `AGENT.md`'s lessons table already
+records, and deliberately **not** the four in the task file and **not** the four the second
+review used. Each was settled by a mutation: break the behaviour, run the whole suite, revert.
+**Every mutation in this section was reverted and `git status --short` was empty after each one.**
+
+**The gate was run first and it is green**, which is the part of the remediation that holds.
+`pytest` was run **three** times on the untouched tree — 264 passed, 1 skipped, every time — so
+the intermittent failures the second review found are gone. `ruff`, `ci/fitness.py` (6 of 7
+wired, FF-006 at 7 of 7), `ci/evals.py` (5 scorers × 2 cases), `tsc`, `lint`, `build` and all
+**14** Playwright specs pass. A green gate is not the same as a proven claim, and the four
+checks below are about the difference.
+
+| Check | Result |
+|---|---|
+| **A rule enforced in service code that the store could have refused** | **Failed, and this is the Block.** Done criterion 3: *"a second job for the same location, inserted **directly against the database**, is refused by the store — not by the service layer."* It is not. `unique (scenario_id, location_key)` refuses only a **byte-identical** key, and the rule that makes two spellings one location — casefold, then collapse whitespace — lives entirely in `store/dispatch.py:location_key()`. Inserted directly beside a stored `northgate`, the store **accepts** `Northgate`, and it accepts `north  gate`; the board then renders `job_count: 2` at `['northgate', 'Northgate']` — two crews, one neighbourhood, which is the single failure AC-007 exists to prevent. The mutation shows exactly how far the tests reach: deleting `.casefold()` turns **one** test red, `ITEST-003::test_the_same_place_written_differently_is_still_one_place`, which files both reports **through the endpoint**. No store-level assertion exists, and `store/dispatch.py`'s own docstring — *"delete this module's find-first logic and the database still refuses the second job"* — is false for the case that matters. The store can express it: `unique (scenario_id, location_key collate nocase)`, or a `check` that the stored key is already normalised. |
+| **A property asserted only within one process lifetime, when the decision says the state is durable** | **Failed.** CHG-018 makes `seq` the history and `read_all` calls that history *"the order it happened, not a view of it"* — durable state, and ADR-002's promise is that *a restart is not an incident*. Every test that asserts the order builds **one** application. Mutation: hold the sequence beside the connection (`_SEQ[(id(connection), table)] += 1`) instead of taking it from the table inside the insert — the obvious way to write a counter, and identical in behaviour within one process. **All 264 tests still pass.** A second application over the same database file then fails to file a damage report at all: the counter restarts at 1, `unique (seq)` refuses the row, and the dispatcher gets `500 internal_error` for the first thing they type after a restart. `AGENT.md`'s second lessons row already says what was owed here — *one test must cross a restart* — and `conftest.build_application` exists for exactly that, written for TASK-001's review. It was not used for the durable state this task introduced. |
+| **A described state with nowhere in the schema to live** | **Failed — and it is the same shape the second review found, one link further out.** §3 makes `damage_reports.repair_job_id` **optional**; §1 says a report belongs *"to **at most** one repair job"*. `api/views.py`'s `board_body` groups reports by that column and then emits one item **per job**, so a report with no job lands in a bucket keyed `None` that nothing reads. Two open reports in one storm, one of them unattached: the board returns `report_count: 1`, the second report is on no screen, and `open_reports_in_area` — an **inner** join through `repair_jobs` — logs `open_reports_in_area=1` for a neighbourhood that has two, which is the REQ-NF-007 figure being wrong in the direction that under-reports. All 264 tests pass with that row in the table. Reachable only by a direct insert today, which is what was said about the storm-scope hole one review ago. Raised as **CHG-022**, proposed, because §3 permits the state and no document says what the board does with it. |
+| **A check that was never fed data without the condition it reports** | **Failed.** The CON-003 location constraint done criterion 4 rests on has four clauses. Three are exercised by UTEST-012 — `json_valid`, `json_type(...) = 'text'`, and the `json_object` rebuild that catches an address, a meter id and a coordinate. The fourth, `length(trim(...)) between 1 and 120`, is exercised by **nothing**: no empty neighbourhood, no whitespace-only one, no over-length one, at the store or at the endpoint. Mutation: relax it to `between 1 and 100000` in migrations 007 and 008 **and** raise `NEIGHBOURHOOD_MAX` to 5000 — **264 pass**. The two numbers are also two hard-coded copies of one bound with nothing tying them together: leaving the schema at 120 and setting the service constant to 5000 turns the specified `400 validation_error` into `500 internal_error` for a 121-character neighbourhood, and the suite stays green through that too. |
+
+**What held, and it is most of the remediation.** Both halves of AC-007 through the endpoint;
+the `unique (scenario_id, location_key)` refusal for an identical key; the CHG-019 composite
+foreign keys, refused directly against the database in both directions with the permitted case
+beside them; `pragma foreign_keys = on`, without which every `references` clause would be
+decorative; the CHG-018 ordering with the clock frozen, across three full runs; the three-way
+neighbourhood / storm / asset figures, now genuinely different numbers; `dismissed_report_count`
+and the `duplicate` reader; PTEST-002's named indexes and its positive guards; and the five new
+Playwright cases, which are real coverage of a criterion that used to be satisfied by reading
+source.
+
+**Two observations, neither a finding.** Migration 008 changed `damage_reports.asset_id` from
+`on delete set null` to `on delete cascade` — justified in the entry for `repair_job_id`, where a
+composite child key cannot be nulled by halves, and applied to `asset_id` in the same breath.
+Under 007 deleting an asset kept the report; under 008 it destroys it, which contradicts §4's
+*a report naming no matching asset is still a report*. Inert today — **no `delete from` statement
+exists anywhere in `backend/`** — and live the moment §7.2's *delete or replace a scenario* is
+built. And `STEST-001`'s `DATA_ROUTES` still does not list
+`POST /api/v1/scenarios/{id}/damage-reports`, the endpoint this task created; done criterion 9's
+first half is covered only by the unknown-path case. The `SessionGuard` refuses before routing,
+so the behaviour holds — but the row is free and the criterion names it.
+
+### Author, fixer and reviewer are the same process, for the seventh time — and this row is the one most at risk of being read as a clean bill
+
+**Q-026, stated plainly because the previous row said *Fixed — awaiting re-review* and this is
+the review it was awaiting.** This run neither wrote TASK-005 nor fixed it, and had not seen the
+code. That is worth something, and the evidence is in the table above: a reader who did not know
+where the fixes were careful found three failures in work that had been mutation-checked
+twenty-six times by its author and eight more times by its fixer. It is **not** independence. It
+is the same model, under the same account, following instructions from the same person, with no
+human between the work and its acceptance. **No real people exist for this prototype**; one
+person holds every decision-owner role, and that was recorded as a deferral rather than resolved
+with invented names. A third invocation of one process is not a third pair of eyes, and this
+signature must not be read as one.
+
+**What the pattern is starting to say is worth more than any single finding.** Three reviews of
+one task have now each found something the previous one did not, and each new reviewer's checks
+were chosen from the same short list in `AGENT.md`. That is not a story about this task being
+unusually bad. It is a story about how much a directed mutation finds and how little a green
+gate proves — 264 tests, six fitness functions, ten evals and fourteen browser cases were all
+green while a second crew could be sent to one neighbourhood.
 
 ### The remediation row above is not a signature, and the difference matters here more than usual
 

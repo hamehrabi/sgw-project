@@ -62,19 +62,31 @@ and that three of the task's own done criteria were proven by nothing. All eight
 fixed and mutation-checked (`TASK-005.md`, *What the second review found*), and the suite has
 been run twelve times without a red. **It is not Done until somebody who did not fix it says so.**
 
+**The re-review happened on 2026-08-16 and the decision was Block again.** The gate is green —
+264 tests over three runs, no red — and the CHG-018 ordering fix holds. But **done criterion 3
+is not met**: `unique (scenario_id, location_key)` refuses only a byte-identical key, so the
+case- and spacing-insensitivity that *defines* "the same location" lives only in
+`store/dispatch.py`, and a second job for one neighbourhood inserted directly against the
+database is **accepted**. That is this log's pre-declared Block condition for the second review
+running. Two smaller failures — the durable `seq` order is asserted only inside one process
+lifetime, and the store's location check has a clause no test ever violates — and one new
+proposed entry, **CHG-022**. All four checks and their mutations are in `review-log.md`.
+**TASK-006 must not be started on the assumption that TASK-005 is accepted.**
+
 **The ordering defect was never TASK-005's alone**, which is why this row matters to TASK-004 as
 well: `decision_records` has been intermittently mis-ordered since migration 006, and
 `latest_recommendation` could return the wrong recommendation outright. That is fixed by the
 same migration.
 
-**Six change entries are open against this task and none is accepted.** **CHG-016** (no endpoint
+**Seven change entries are open against this task and none is accepted.** **CHG-016** (no endpoint
 creates a damage report), **CHG-017** (`repair_jobs` had nowhere to keep the location it
 answers, and `damage_reports.location` had no fixed resolution), **CHG-018** (a monotonic `seq`,
 because a timestamp is not a total order), **CHG-019** (composite foreign keys — a foreign key
 proved an asset existed, never that it was in this storm), **CHG-020** (a job's location
-survives the dismissal of the report it came from) and **CHG-021** (`duplicate` given a reader).
-All are **proposed**: the build could not proceed without deciding them, and none of the
-decisions is the agent's to accept. The row above gains **REQ-NF-007** and **UTEST-012** for a
+survives the dismissal of the report it came from), **CHG-021** (`duplicate` given a reader) and
+**CHG-022** (a damage report belonging to no repair job is on no screen and in no figure — raised
+at the third review, and **not implemented**). All are **proposed**: the build could not proceed
+without deciding them, and none of the decisions is the agent's to accept. The row above gains **REQ-NF-007** and **UTEST-012** for a
 different reason — `traceability.md` already puts that requirement on TASK-002 and TASK-005, and
 this is the first task in which a damage location exists to be aggregated, so it is the first
 task where the rule can be broken.
