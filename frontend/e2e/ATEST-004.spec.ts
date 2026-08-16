@@ -24,12 +24,15 @@ async function loadedStorm(page: Page) {
   await page.getByLabel('Email').fill('ops@sgw.example')
   await page.getByLabel('Password').fill('e2e-fixture-password')
   await page.getByRole('button', { name: 'Sign in' }).click()
-  await page.getByLabel('Storm name').fill('Helene replay')
+  await page.getByLabel('Source name').fill('Helene replay')
   await page.setInputFiles(
     '#storm-files',
     FILES.map((name) => path.join(FIXTURE, name)),
   )
+  await page.getByRole('button', { name: 'Process data' }).click()
   await expect(page.getByTestId('upload-success')).toBeVisible({ timeout: 30_000 })
+  // The quality summary is mandatory reading; Finish and continue is the door forward.
+  await page.getByTestId('finish-continue').click()
   await expect(page.getByTestId('risk-list')).toBeVisible()
 }
 

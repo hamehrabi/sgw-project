@@ -47,12 +47,14 @@ async function loadedStorm(page: Page) {
   await page.getByLabel('Email').fill('ops@sgw.example')
   await page.getByLabel('Password').fill('e2e-fixture-password')
   await page.getByRole('button', { name: 'Sign in' }).click()
-  await page.getByLabel('Storm name').fill('Planning flow rehearsal')
+  await page.getByLabel('Source name').fill('Planning flow rehearsal')
   await page.setInputFiles(
     '#storm-files',
     FILES.map((name) => path.join(FIXTURE, name)),
   )
+  await page.getByRole('button', { name: 'Process data' }).click()
   await expect(page.getByTestId('upload-success')).toBeVisible({ timeout: 30_000 })
+  await page.getByTestId('finish-continue').click()
   await expect(page.getByTestId('risk-list')).toBeVisible()
   await expect(page.getByTestId('placement-form')).toBeVisible()
 }

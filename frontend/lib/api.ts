@@ -451,6 +451,52 @@ export const scenarios = {
     if (!response.ok) throw new RequestFailed(response.status, body as ApiError & Record<string, unknown>)
     return body as { scenario_id: string; forecast_revision: number }
   },
+
+  /**
+   * The same POST, through XMLHttpRequest so the upload's real progress is reportable —
+   * `fetch` cannot see bytes leave the machine. `onProgress` receives 0..100 while the
+   * bytes travel; the parse that follows has no percentage, and the panel says so in
+   * words rather than inventing one (`reliability-specification.md` §6: one
+   * undifferentiated spinner hides which stage broke).
+   */
+  loadWithProgress: (
+    name: string,
+    sourceNote: string,
+    files: File[],
+    onProgress: (percent: number) => void,
+  ) =>
+    new Promise<{ scenario_id: string; forecast_revision: number }>((resolve, reject) => {
+      const form = new FormData()
+      form.append('name', name)
+      form.append('source_note', sourceNote)
+      for (const file of files) form.append('files', file)
+
+      const xhr = new XMLHttpRequest()
+      xhr.open('POST', '/api/v1/scenarios')
+      xhr.responseType = 'json'
+      xhr.upload.onprogress = (event) => {
+        if (event.lengthComputable) onProgress(Math.round((event.loaded / event.total) * 100))
+      }
+      xhr.onload = () => {
+        const body = (xhr.response ?? {
+          code: 'unreachable',
+          message: 'We could not reach the server. Please try again.',
+        }) as ApiError & Record<string, unknown>
+        if (xhr.status >= 200 && xhr.status < 300) {
+          resolve(body as unknown as { scenario_id: string; forecast_revision: number })
+        } else {
+          reject(new RequestFailed(xhr.status, body))
+        }
+      }
+      xhr.onerror = () =>
+        reject(
+          new RequestFailed(0, {
+            code: 'unreachable',
+            message: 'We could not reach the server. Nothing was changed.',
+          }),
+        )
+      xhr.send(form)
+    }),
 }
 
 export const auth = {

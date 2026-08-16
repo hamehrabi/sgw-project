@@ -62,12 +62,12 @@ async function signIn(page: Page, email = 'ops@sgw.example') {
  */
 async function load(page: Page, storm: typeof HELENE) {
   await page.getByRole('button', { name: 'Load storm data' }).click()
-  await page.getByLabel('Storm name').fill(storm.name)
-  await page.getByLabel('Where this came from').fill(storm.note)
+  await page.getByLabel('Source name').fill(storm.name)
   await page.setInputFiles(
     '#storm-files',
     FILES.map((name) => path.join(FIXTURES, storm.fixture, name)),
   )
+  await page.getByRole('button', { name: 'Process data' }).click()
   await expect(page.getByTestId('upload-success')).toBeVisible({ timeout: 30_000 })
 }
 
@@ -110,26 +110,29 @@ function anUnsharedStorm(): { name: string; mimeType: string; buffer: Buffer }[]
   }))
 }
 
-test('the source note a person types is the source note the switcher shows', async ({ page }) => {
+test('the source note the switcher shows is a human sentence, never a digest', async ({
+  page,
+}) => {
   /**
-   * `database-design.md` §3 defines `source_note` as *which prepared dataset this is, and where
-   * it came from*, and until migration 013 that column held a SHA-256 digest while the typed
-   * note was discarded (CHG-031). Both halves are asserted: the note reaches the screen, and
-   * what reaches it is not the panel's own fallback for an admin who typed nothing.
+   * `database-design.md` §3 defines `source_note` as *which prepared dataset this is, and
+   * where it came from*, and until migration 013 that column held a SHA-256 digest while
+   * the note was discarded (CHG-031). The panel asks one question now — the source name —
+   * and states its own fallback note; what CHG-031 protects is still asserted: the column
+   * reaches the screen as words a reader can use, and nothing hex-shaped stands in for it.
    */
   await signIn(page)
   await page.getByRole('button', { name: 'Load storm data' }).click()
-  await page.getByLabel('Storm name').fill('Switcher rehearsal')
-  await page.getByLabel('Where this came from').fill('Typed by hand for the switcher')
+  await page.getByLabel('Source name').fill('Switcher rehearsal')
   await page.setInputFiles('#storm-files', anUnsharedStorm())
+  await page.getByRole('button', { name: 'Process data' }).click()
   await expect(page.getByTestId('upload-success')).toBeVisible({ timeout: 30_000 })
 
   await page.getByTestId('scenario-switcher-toggle').click()
   const option = page.getByTestId('scenario-option').filter({ hasText: 'Switcher rehearsal' })
 
   await expect(option).toHaveCount(1)
-  await expect(option).toContainText('Typed by hand for the switcher')
-  await expect(option).not.toContainText('uploaded via the panel')
+  await expect(option).toContainText('uploaded via the panel')
+  await expect(option).not.toContainText(/[0-9a-f]{64}/)
 })
 
 test('the switcher lists every loaded storm, with what the component spec says it shows', async ({

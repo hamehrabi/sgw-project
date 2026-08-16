@@ -40,11 +40,12 @@ async function loadedStorm(page: Page) {
   await page.getByLabel('Email').fill('ops@sgw.example')
   await page.getByLabel('Password').fill('e2e-fixture-password')
   await page.getByRole('button', { name: 'Sign in' }).click()
-  await page.getByLabel('Storm name').fill('Helene replay')
+  await page.getByLabel('Source name').fill('Helene replay')
   await page.setInputFiles(
     '#storm-files',
     FILES.map((name) => path.join(FIXTURE, name)),
   )
+  await page.getByRole('button', { name: 'Process data' }).click()
   await expect(page.getByTestId('upload-success')).toBeVisible({ timeout: 30_000 })
   // The board is the Dispatch Board surface — the sidebar's second of exactly two items.
   await page.getByRole('button', { name: 'Dispatch Board' }).click()

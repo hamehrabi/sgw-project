@@ -23,7 +23,7 @@ export function HomeScreen() {
           loadedCount={storm.storms.length}
           onLoaded={storm.onLoaded}
           surface={shell.surface}
-          justLoaded={shell.justLoaded}
+          onFinish={() => shell.setSurface('planning')}
         />
       )}
     </AppShell>

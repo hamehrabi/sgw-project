@@ -52,8 +52,6 @@ export interface StormChoice {
 export interface ShellControls {
   surface: Surface
   setSurface: (surface: Surface) => void
-  /** True for one render pass after a storm loads — Planning shows the confirmation. */
-  justLoaded: boolean
 }
 
 function clock(issuedAt: string | null | undefined): string | null {
@@ -72,7 +70,8 @@ export function AppShell({
   const [switcher, setSwitcher] = useState<SwitcherState>('loading')
   const [selected, setSelected] = useState<string | null>(null)
   const [surface, setSurface] = useState<Surface>('load')
-  const [justLoaded, setJustLoaded] = useState(false)
+  // Shown after a click on a locked dashboard tab — the click gets an answer, not silence.
+  const [lockedHint, setLockedHint] = useState(false)
 
   const resolveSession = useCallback(async () => {
     try {
@@ -108,18 +107,19 @@ export function AppShell({
 
   const onLoaded = useCallback(
     (scenarioId: string) => {
+      // The storm is selected but the person STAYS on the Load surface: the data
+      // quality summary is mandatory reading, and "Finish and continue" is the door
+      // to the dashboards — never a silent redirect past the findings.
       setSelected(scenarioId)
-      setJustLoaded(true)
-      // A storm just arrived; the person who loaded it came to rank it.
-      setSurface('planning')
       void readStorms()
     },
     [readStorms],
   )
 
   const choose = useCallback((scenarioId: string) => {
+    // A storm picked from the switcher was processed when it was loaded; its quality
+    // summary stays one click away behind "Load storm data".
     setSelected(scenarioId)
-    setJustLoaded(false)
     setSurface((current) => (current === 'load' ? 'planning' : current))
   }, [])
 
@@ -206,16 +206,48 @@ export function AppShell({
         </div>
 
         <nav className="flex flex-col gap-1 p-3">
+          {/* Loading is the onboarding, so its entry leads the list. */}
+          {identity.role === 'admin' && (
+            <button
+              type="button"
+              onClick={() => setSurface('load')}
+              aria-current={surface === 'load' || undefined}
+              className={cn(
+                'flex items-center gap-2.5 rounded-card border-l-2 border-transparent px-3 py-2',
+                'text-left text-[14px] font-medium text-ink-secondary hover:bg-panel',
+                surface === 'load' && 'border-teal bg-teal-soft text-teal-deep',
+              )}
+            >
+              <Upload className="h-4 w-4" aria-hidden />
+              Load storm data
+            </button>
+          )}
+
+          {/* Both dashboards stay visible so the shape of the product is legible from the
+              first minute — greyed until a storm is loaded, processed and chosen, and a
+              click on a locked one SAYS why instead of doing nothing. A nav item pointing
+              at an empty ranking would be the empty screen that reads as safety. */}
           {navigation.map(({ surface: item, label, icon: Icon }) => (
             <button
               key={item}
               type="button"
-              onClick={() => setSurface(item)}
+              aria-disabled={!selected || undefined}
+              onClick={() => {
+                if (selected) {
+                  setLockedHint(false)
+                  setSurface(item)
+                } else {
+                  setLockedHint(true)
+                }
+              }}
               aria-current={surface === item || undefined}
               className={cn(
                 'flex items-center gap-2.5 rounded-card border-l-2 border-transparent px-3 py-2',
-                'text-left text-[14px] font-medium text-ink-secondary hover:bg-panel',
-                surface === item && 'border-teal bg-teal-soft text-teal-deep',
+                'text-left text-[14px] font-medium',
+                selected
+                  ? 'text-ink-secondary hover:bg-panel'
+                  : 'cursor-not-allowed text-faint',
+                selected && surface === item && 'border-teal bg-teal-soft text-teal-deep',
               )}
             >
               <Icon className="h-4 w-4" aria-hidden />
@@ -223,23 +255,10 @@ export function AppShell({
             </button>
           ))}
 
-          {identity.role === 'admin' && (
-            <button
-              type="button"
-              onClick={() => {
-                setJustLoaded(false)
-                setSurface('load')
-              }}
-              aria-current={surface === 'load' || undefined}
-              className={cn(
-                'mt-2 flex items-center gap-2.5 rounded-card border-t border-line px-3 pt-3 pb-2',
-                'text-left text-[13px] text-muted hover:text-ink',
-                surface === 'load' && 'text-teal-deep',
-              )}
-            >
-              <Upload className="h-3.5 w-3.5" aria-hidden />
-              Load storm data
-            </button>
+          {lockedHint && !selected && (
+            <p role="status" className="px-3 py-1.5 text-[12px] leading-relaxed text-muted">
+              Load and process a storm to open Storm Planning and the Dispatch Board.
+            </p>
           )}
         </nav>
       </aside>
@@ -279,7 +298,7 @@ export function AppShell({
           {children?.(
             identity,
             { scenarioId: selected, storms, onLoaded },
-            { surface, setSurface, justLoaded },
+            { surface, setSurface },
           )}
         </main>
       </div>

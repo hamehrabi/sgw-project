@@ -35,11 +35,14 @@ async function signIn(page: Page, email: string) {
 }
 
 async function loadTheStorm(page: Page, files = FILES) {
-  await page.getByLabel('Storm name').fill('Helene replay')
+  await page.getByLabel('Source name').fill('Helene replay')
   await page.setInputFiles(
     '#storm-files',
     files.map((name) => path.join(FIXTURE, name)),
   )
+  if (files.length === FILES.length) {
+    await page.getByRole('button', { name: 'Process data' }).click()
+  }
 }
 
 test('an admin loads a prepared storm and reaches the joined asset view', async ({ page }) => {
@@ -49,6 +52,7 @@ test('an admin loads a prepared storm and reaches the joined asset view', async 
   await loadTheStorm(page)
 
   await expect(page.getByTestId('upload-success')).toBeVisible({ timeout: 30_000 })
+  await page.getByTestId('finish-continue').click()
   await expect(page.getByTestId('asset-table')).toBeVisible()
   // The two codes for one substation arrive as one row, all the way to the screen — once in
   // the joined view and once in the ranking, and in neither as two assets.
@@ -63,6 +67,7 @@ test('records the join could not resolve reach a person rather than being droppe
   await signIn(page, 'ops@sgw.example')
   await loadTheStorm(page)
   await expect(page.getByTestId('upload-success')).toBeVisible({ timeout: 30_000 })
+  await page.getByTestId('finish-continue').click()
 
   await expect(page.getByTestId('needs-review-count')).toContainText('2 record(s)')
   await expect(page.getByTestId('needs-review').first()).toBeVisible()
@@ -72,6 +77,7 @@ test('the screen states how old the data is', async ({ page }) => {
   await signIn(page, 'ops@sgw.example')
   await loadTheStorm(page)
   await expect(page.getByTestId('upload-success')).toBeVisible({ timeout: 30_000 })
+  await page.getByTestId('finish-continue').click()
 
   // The fixture's forecast is issued well over six hours before it is loaded, so the
   // non-dismissible form is what should appear — and it must say the age, not just "stale".
@@ -81,15 +87,20 @@ test('the screen states how old the data is', async ({ page }) => {
   await expect(banner).toContainText('6 hours')
 })
 
-test('a refusal names the file and changes nothing', async ({ page }) => {
+test('an incomplete set is named on screen and never offered for processing', async ({
+  page,
+}) => {
   await signIn(page, 'ops@sgw.example')
 
-  // manifest.json is missing: the load must fail whole and say which file.
+  // manifest.json is missing. Three real uploads failed with the server's 422 before
+  // the staging list existed; now the absence is guidance before the POST — the file
+  // is named as Missing, and Process data is not offered. The server still refuses an
+  // incomplete upload independently (FTEST-001) — this is the courtesy, not the rule.
   await loadTheStorm(page, ['assets.csv', 'maintenance.csv', 'weather.csv', 'outages.csv'])
 
-  const refusal = page.getByTestId('upload-error')
-  await expect(refusal).toBeVisible({ timeout: 30_000 })
-  await expect(refusal).toContainText('manifest.json')
+  const staged = page.getByTestId('staged-files')
+  await expect(staged.locator('li', { hasText: 'manifest.json' })).toContainText('Missing')
+  await expect(page.getByTestId('process-data')).toBeDisabled()
   await expect(page.getByTestId('asset-table')).toHaveCount(0)
   await expect(page.getByTestId('risk-list')).toHaveCount(0)
 })

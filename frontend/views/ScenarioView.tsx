@@ -34,6 +34,8 @@ import {
   scenarios,
 } from '@/lib/api'
 
+import { Button } from '@/components/ui/button'
+
 import { AssetDetailSheet } from './AssetDetailSheet'
 import { AssetMatchSheet } from './AssetMatchSheet'
 import { AssetTable } from './AssetTable'
@@ -61,7 +63,7 @@ export function ScenarioView({
   loadedCount,
   onLoaded,
   surface,
-  justLoaded,
+  onFinish,
 }: {
   role: Role
   scenarioId: string | null
@@ -69,7 +71,8 @@ export function ScenarioView({
   loadedCount: number
   onLoaded: (scenarioId: string) => void
   surface: Surface
-  justLoaded: boolean
+  /** "Finish and continue" — the Load surface's one door into the dashboards. */
+  onFinish: () => void
 }) {
   const [scenario, setScenario] = useState<Scenario | null>(null)
   const [page, setPage] = useState<AssetPage | null>(null)
@@ -153,6 +156,14 @@ export function ScenarioView({
               open={reviewingMatches}
               onOpenChange={setReviewingMatches}
             />
+            {/* The one door forward. The quality summary above is mandatory reading —
+                this button sits below it so the path runs through the findings, and
+                the dashboards' nav items do not exist until a storm is chosen. */}
+            <div className="flex justify-end">
+              <Button variant="primary" data-testid="finish-continue" onClick={onFinish}>
+                Finish and continue
+              </Button>
+            </div>
           </>
         )}
       </div>
@@ -179,16 +190,6 @@ export function ScenarioView({
 
   return (
     <div data-testid="scenario-data" className="space-y-5">
-      {justLoaded && (
-        <p
-          role="status"
-          data-testid="upload-success"
-          className="rounded-card border border-low-fg/25 bg-low-bg px-4 py-2.5 text-[13px] font-medium text-low-fg"
-        >
-          Loaded. This storm is now selectable alongside any others.
-        </p>
-      )}
-
       {scenario && (
         <>
           <StalenessBanner scenario={scenario} />

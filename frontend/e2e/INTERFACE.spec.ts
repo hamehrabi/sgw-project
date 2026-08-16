@@ -25,11 +25,12 @@ async function loadedStorm(page: Page) {
   await page.getByLabel('Email').fill('ops@sgw.example')
   await page.getByLabel('Password').fill('e2e-fixture-password')
   await page.getByRole('button', { name: 'Sign in' }).click()
-  await page.getByLabel('Storm name').fill('Interface rebuild storm')
+  await page.getByLabel('Source name').fill('Interface rebuild storm')
   await page.setInputFiles(
     '#storm-files',
     FILES.map((name) => path.join(FIXTURE, name)),
   )
+  await page.getByRole('button', { name: 'Process data' }).click()
   await expect(page.getByTestId('upload-success')).toBeVisible({ timeout: 30_000 })
 }
 
@@ -37,6 +38,7 @@ test('focus mode triages on the keyboard, and the feed says a person decided', a
   page,
 }) => {
   await loadedStorm(page)
+  await page.getByTestId('finish-continue').click()
   await expect(page.getByTestId('risk-list')).toBeVisible()
 
   await page.getByTestId('start-triage').click()
@@ -97,8 +99,7 @@ test('the summary blocks approval of a figure the platform does not hold', async
 
 test('the match queue shows both sides and M records the reviewer', async ({ page }) => {
   await loadedStorm(page)
-  await page.getByRole('button', { name: 'Load storm data' }).click()
-
+  // Processing ends on the Load surface, quality summary already on screen.
   const quality = page.getByTestId('data-quality-summary')
   await expect(quality).toBeVisible()
   // The fixture withholds merges on purpose (defect 1) — the finding offers Review.
@@ -124,6 +125,7 @@ test('the sample button loads a storm through the same parse path', async ({ pag
 
   await page.getByRole('button', { name: 'Use sample storm data' }).click()
   await expect(page.getByTestId('upload-success')).toBeVisible({ timeout: 30_000 })
-  // It landed on planning with a real ranking behind it — a parse, not a shortcut.
+  // Through the quality summary and the door — a real ranking behind it, not a shortcut.
+  await page.getByTestId('finish-continue').click()
   await expect(page.getByTestId('risk-list')).toBeVisible()
 })
