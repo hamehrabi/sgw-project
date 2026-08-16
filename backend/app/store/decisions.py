@@ -15,6 +15,17 @@ from datetime import UTC, datetime
 
 RECOMMENDATION = "recommendation"
 DECISIONS = ("accept", "change", "reject")
+PLACEMENT = "placement"
+
+# One bound, and the schema holds the other copy of it. `decision_records_placement_shape`
+# (migration 012) refuses a stored crew label outside `between 1 and CREW_LABEL_MAX`, and
+# `test_TASK-007-AC4` reads that number out of `sqlite_master` and requires the two to agree —
+# because two hard-coded copies of one bound with nothing tying them together is how the
+# specified `400 validation_error` became a `500 internal_error` for a neighbourhood one
+# character over the limit, with the whole suite green (CHG-023).
+CREW_LABEL_MAX = 120
+# The same bound the decision note carries, for the same reason and in the same place.
+NOTE_MAX = 2000
 
 
 def _now() -> str:
@@ -53,6 +64,21 @@ def _append(connection, *, scenario_id, kind, subject_type, subject_id, payload,
     return record_id
 
 
+RANKING = "ranking"
+
+
+def ranking_subject(scenario_id, forecast_revision) -> str:
+    """The identifier one delivered ranking is known by inside the audit trail.
+
+    One function rather than three format strings, because the `recommendation` row and every
+    `placement` made against that ranking have to spell it **identically** — that shared value is
+    what makes `decision_records_by_subject` answer *what was recommended here, and what did
+    people decide about it* in one lookup, and migration 012 refuses a placement whose subject
+    disagrees with its own payload.
+    """
+    return f"{scenario_id}:{forecast_revision}"
+
+
 def append_recommendation(connection, *, scenario_id, forecast_revision, payload) -> str:
     """One row per delivered ranking (FF-005).
 
@@ -63,11 +89,82 @@ def append_recommendation(connection, *, scenario_id, forecast_revision, payload
         connection,
         scenario_id=scenario_id,
         kind=RECOMMENDATION,
-        subject_type="ranking",
-        subject_id=f"{scenario_id}:{forecast_revision}",
+        subject_type=RANKING,
+        subject_id=ranking_subject(scenario_id, forecast_revision),
         payload=payload,
         actor_user_id=None,
     )
+
+
+def crew_label(value: str) -> str | None:
+    """The crew label as the store will hold it, or `None` if the store would refuse it.
+
+    **This is not the enforcement and must not be read as one** (ADR-002).
+    `decision_records_placement_shape` refuses the same shapes independently, and a direct insert
+    never comes through here. What this buys is the legible `400 validation_error` the contract
+    specifies instead of the `500 internal_error` a constraint violation would produce — the exact
+    gap that opened between `dispatch.NEIGHBOURHOOD_MAX` and its two copies in the schema, and the
+    reason `CREW_LABEL_MAX` is read back out of `sqlite_master` by a test.
+
+    CON-003 permits **a display name and a role** and forbids everything else about a person, so
+    this is a label: one line, trimmed, bounded.
+    """
+    label = value.strip()
+    if not label or len(label) > CREW_LABEL_MAX:
+        return None
+    if any(character in label for character in ("\t", "\n", "\v", "\f", "\r")):
+        return None
+    return label
+
+
+def append_placement(
+    connection,
+    *,
+    scenario_id,
+    forecast_revision,
+    recommendation_id,
+    crew,
+    asset_ids,
+    note,
+    actor_user_id,
+) -> str:
+    """Record that a person decided which crew waits where (REQ-F-005).
+
+    **A record, never an action** (BR-001). Nothing here creates a repair job, assigns anybody,
+    or reaches anything outside the platform — the row says what somebody decided while looking
+    at one particular ranking, and that is the whole of it.
+
+    There is no 409 here and that is deliberate: a ranking carries any number of placements,
+    because several crews wait in several places. A *decision* is one per recommendation because
+    a recommendation is accepted, changed or rejected once; a placement is not a verdict on the
+    list, it is a plan made against it.
+    """
+    return _append(
+        connection,
+        scenario_id=scenario_id,
+        kind=PLACEMENT,
+        subject_type=RANKING,
+        subject_id=ranking_subject(scenario_id, forecast_revision),
+        payload={
+            "crew": crew,
+            "asset_ids": list(asset_ids),
+            "forecast_revision": forecast_revision,
+            # The delivered ranking this was made against, when one has been delivered. It is
+            # `null` for a placement recorded without the list ever having been read — reachable
+            # only outside the screens, because `PlacementForm` is not rendered without a ranking
+            # (BR-001). The subject above names the ranking either way, which is the traceability
+            # that always holds.
+            "recommendation_id": recommendation_id,
+            "note": note,
+        },
+        actor_user_id=actor_user_id,
+    )
+
+
+def find_record(connection, record_id) -> sqlite3.Row | None:
+    return connection.execute(
+        "select * from decision_records where id = ?", (record_id,)
+    ).fetchone()
 
 
 def append_decision(connection, *, recommendation, kind, actor_user_id, note, change) -> str:
@@ -109,7 +206,7 @@ def latest_recommendation(connection, scenario_id, forecast_revision) -> sqlite3
     return connection.execute(
         "select * from decision_records where kind = ? and subject_id = ?"
         " order by seq desc limit 1",
-        (RECOMMENDATION, f"{scenario_id}:{forecast_revision}"),
+        (RECOMMENDATION, ranking_subject(scenario_id, forecast_revision)),
     ).fetchone()
 
 

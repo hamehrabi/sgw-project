@@ -14,7 +14,7 @@
 | TASK-004 | Accept, change, or reject a recommendation, writing the append-only record | REQ-F-006, REQ-F-009, BR-001, BR-004, FF-004, FF-005 | P1 | TASK-003 | **Done** | agent | ATEST-006, ATEST-008, ITEST-002, FTEST-005, STEST-008 |
 | TASK-005 | Dispatch board — one shared damage and repair list | REQ-F-007, REQ-NF-007 | P1 | TASK-002 | **In review** | agent | ATEST-007, ITEST-003, PTEST-002, UTEST-012, ITEST-002 (the ordering half) |
 | TASK-006 | Re-rank on a forecast change, keeping the previous order | REQ-F-004, AC-005 | P1 | TASK-003 | **In review** | agent | ATEST-005, ITEST-004 |
-| TASK-007 | Record a crew placement against the ranking | REQ-F-005 | P1 | TASK-003 | Not started | agent | E2E-001 |
+| TASK-007 | Record a crew placement against the ranking | REQ-F-005, BR-001 | P1 | TASK-003 | **In review** | agent | E2E-001, FTEST-005 (the placement half) |
 | TASK-008 | Dismiss a false alarm in one action | REQ-F-008 | P1 | TASK-005 | Not started | agent | UTEST-011 |
 | TASK-009 | Switch between several loaded storms | REQ-F-010 | P2 | TASK-002 | Not started | agent | ITEST-005 |
 | TASK-010 | Wire the **remaining** fitness function into the build gate | FF-003 | P1 | — | Not started | human | — (the register is the assertion) |
@@ -141,6 +141,31 @@ prepared file carries is not the same thing as a revision that can be read back,
 reported them as one list) and **CHG-028** (three invariants on `risk_scores` the store could hold
 and did not — delete-and-reinsert, a ranking of a forecast that does not exist, and CHG-019's
 remaining existence-not-membership key).
+
+**TASK-007 is built and In review, and it was started without assuming TASK-005 or TASK-006 is
+accepted** — it adds no table, changes no existing one, and touches neither task's code except to
+extend the migration round-trip test that its own migration reorders. `TASK-007.md` is written,
+E2E-001 exists as an API half and a browser half, migration **012** is shipped with an up and a
+down (009, 010 and 011 were already taken by the two previous remediations), and the whole gate is
+green. **Every case written for it was mutation-checked, and two of the mutations were themselves
+wrong before they were right** — one anchored on a `setState({ stage: 'error' … })` that turned out
+to be the *validation* branch rather than the `catch` branch, and one dropped a
+`decision_records` trigger three lines before the same file re-asserted it. A mutation that does
+not mutate reports a clean bill, which is the third and fourth time this repository has recorded
+that trap. **One directed check found a real weak assertion:** removing the unknown-storm lookup
+altogether left `test_the_endpoint_refuses_what_the_contract_says_it_refuses` green, because the
+request was refused three checks later for having no ranking and the test read only the status
+code. It now reads the refusal out of the message.
+
+**A fourteenth change entry is open, and it is the first raised against TASK-007.** **CHG-029** —
+`decision_records.kind` has permitted `'placement'` since migration 006 with no writer, no reader
+and no decided shape, while `product-spec.md` §10 requires a placement to be *traceable to the
+ranking and forecast revision it was made against*. The payload's shape, its subject, and a
+`before insert` guard that refuses a placement naming an asset that is not on that ranking are all
+decided there, along with the two alternatives that were declined in writing: a `placements` table
+(it would split one decision across an append-only table and an ordinary one) and a rebuild of
+`decision_records` to carry a `check` (it cannot be done without dropping both append-only
+triggers, which ADR-004 forbids).
 
 **The ordering defect was never TASK-005's alone**, which is why this row matters to TASK-004 as
 well: `decision_records` has been intermittently mis-ordered since migration 006, and

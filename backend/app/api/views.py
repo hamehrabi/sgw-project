@@ -111,6 +111,30 @@ def decision_item(row) -> dict:
     }
 
 
+def placement_item(row) -> dict:
+    """One crew placement, as the operator who recorded it reads it back.
+
+    Assembled from the **stored row** rather than from the request that made it, so the
+    confirmation on screen is what the audit trail holds and not what was asked for. The
+    `forecast_revision` is the one the placement was made against — deliberately not the storm's
+    current pointer, which moves.
+
+    No location beyond the assets named, because none is stored (CON-003).
+    """
+    payload = json.loads(row["payload"])
+    return {
+        "placement_id": row["id"],
+        "scenario_id": row["scenario_id"],
+        "forecast_revision": payload["forecast_revision"],
+        "recommendation_id": payload["recommendation_id"],
+        "crew": payload["crew"],
+        "asset_ids": payload["asset_ids"],
+        "note": payload["note"],
+        "actor_user_id": row["actor_user_id"],
+        "occurred_at": row["occurred_at"],
+    }
+
+
 def risk_item(row) -> dict:
     """One ranked asset, with its reasons and the values they rest on.
 

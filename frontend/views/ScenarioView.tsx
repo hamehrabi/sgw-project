@@ -24,6 +24,7 @@ import { AssetPage, Ranking, Role, Scenario, scenarios } from '@/lib/api'
 import { AssetTable } from './AssetTable'
 import { DispatchBoard } from './DispatchBoard'
 import { ForecastRevisionControl } from './ForecastRevisionControl'
+import { PlacementForm } from './PlacementForm'
 import { RecommendationDecision } from './RecommendationDecision'
 import { RiskList } from './RiskList'
 import { ScenarioIntegrityNotice } from './ScenarioIntegrityNotice'
@@ -98,9 +99,25 @@ export function ScenarioView({ role }: { role: Role }) {
             />
           )}
           <RiskList ranking={ranking} state={rankingState} />
-          {/* No ranking on screen, no decision offered against it (BR-001). */}
+          {/* No ranking on screen, no decision offered against it, and no placement made
+              against it either (BR-001). Both are decisions about a list, and a person takes
+              them while looking at one.
+
+              Both are keyed by the revision, so switching to an earlier order for comparison
+              starts a fresh form rather than carrying a half-typed placement across from the
+              list it was meant for. */}
           {ranking && rankingState === 'ready' && (
-            <RecommendationDecision recommendationId={ranking.recommendation_id} />
+            <>
+              <RecommendationDecision
+                key={`decision-${ranking.forecast_revision}`}
+                recommendationId={ranking.recommendation_id}
+              />
+              <PlacementForm
+                key={`placement-${ranking.forecast_revision}`}
+                scenarioId={scenarioId}
+                ranking={ranking}
+              />
+            </>
           )}
 
           {/* The during-storm half of the same problem, and a separate list on purpose: risk

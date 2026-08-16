@@ -129,6 +129,32 @@ def read_ranking(connection, scenario_id, forecast_revision, *, limit=100, offse
     ).fetchall()
 
 
+def assets_in_ranking(connection, scenario_id, forecast_revision, asset_ids) -> set[str]:
+    """Which of these assets are on that ranking — membership, not existence.
+
+    **Not the enforcement** (ADR-002). `decision_records_placement_shape` refuses a placement
+    naming an asset that is not here, and it refuses it to a direct insert as well as to this
+    caller; what this read buys the endpoint is the legible `400` in front of the constraint,
+    the way `store/dispatch.py`'s find-first lookup sits in front of `unique (scenario_id,
+    location_key)`.
+
+    Being *on the ranking* is deliberately not the same as being *ranked*: an UNSCORED asset has
+    a row here with a null score and a reason why, and a crew may be placed at it (FTEST-004).
+
+    The ids travel as a JSON array through `json_each` rather than as an interpolated `in (…)`
+    list, so this is one prepared statement with no SQL built out of caller input.
+    """
+    return {
+        row[0]
+        for row in connection.execute(
+            "select asset_id from risk_scores"
+            " where scenario_id = ? and forecast_revision = ?"
+            "   and asset_id in (select value from json_each(?))",
+            (scenario_id, forecast_revision, json.dumps(list(asset_ids))),
+        )
+    }
+
+
 def count_for(connection, scenario_id, forecast_revision) -> int:
     return connection.execute(
         "select count(*) from risk_scores where scenario_id = ? and forecast_revision = ?",

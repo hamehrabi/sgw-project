@@ -174,6 +174,50 @@ export const recommendations = {
     }),
 }
 
+/**
+ * A recorded crew placement (REQ-F-005).
+ *
+ * **A record, never an action** (BR-001). Nothing was dispatched, nobody was assigned, no repair
+ * job was created and no message left the platform — this is a row in the append-only decision
+ * record saying what a person decided while looking at one particular ranking.
+ *
+ * There is no location field and there is not going to be one: the "where" is a list of assets,
+ * because CON-003 forbids storing anything finer and the store has nowhere to put it.
+ */
+export interface PlacementRecorded {
+  placement_id: string
+  scenario_id: string
+  /** The revision the operator was **reading**, which is not always the storm's current one. */
+  forecast_revision: number
+  /** The delivered ranking this was made against, when one has been delivered. */
+  recommendation_id: string | null
+  crew: string
+  asset_ids: string[]
+  note: string | null
+  actor_user_id: string
+  occurred_at: string
+}
+
+export const placements = {
+  /** Records where a crew waits. **Never dispatches anything** (BR-001). */
+  record: (
+    scenarioId: string,
+    crew: string,
+    assetIds: string[],
+    forecastRevision: number,
+    note: string | null,
+  ) =>
+    request<PlacementRecorded>(`/api/v1/scenarios/${scenarioId}/placements`, {
+      method: 'POST',
+      body: JSON.stringify({
+        crew,
+        asset_ids: assetIds,
+        forecast_revision: forecastRevision,
+        note,
+      }),
+    }),
+}
+
 export interface Ranking {
   scenario_id: string
   /** The audit row this delivered ranking was recorded as (FF-005). Decisions reference it. */

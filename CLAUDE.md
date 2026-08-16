@@ -41,14 +41,24 @@ reader can still find. Two live examples are in *Known spec drift* below.
 **TASK-001 is Done** — accepted at review, with the author-is-reviewer conflict recorded in
 `review-log.md` rather than hidden (Q-026).
 
-**TASK-005 and TASK-006 are both In review, neither is Done, and both have been blocked once by
-a reader who did not write them.** Six of ten tasks are built — sign-in, upload/parse/joined
-view, the ranked risk list, the append-only decision record, the dispatch board, and the re-rank
-on a forecast change. TASK-005 was blocked at a second review and again at a third; TASK-006 was
-blocked at its first. Every round's findings were fixed the same day (`TASK-005.md`, *What the
-third review found*; `TASK-006.md`, *What the review found, and what was done about it*).
-**Neither is Done until somebody who did not fix it says so**, and TASK-007 must not be started
-on the assumption that either is accepted.
+**TASK-005, TASK-006 and TASK-007 are all In review, none is Done, and the first two have each
+been blocked by a reader who did not write them.** Seven of ten tasks are built — sign-in,
+upload/parse/joined view, the ranked risk list, the append-only decision record, the dispatch
+board, the re-rank on a forecast change, and the crew placement. TASK-005 was blocked at a second
+review and again at a third; TASK-006 was blocked at its first. Every round's findings were fixed
+the same day (`TASK-005.md`, *What the third review found*; `TASK-006.md`, *What the review found,
+and what was done about it*). **None is Done until somebody who did not build it says so**, and
+TASK-007 was built without assuming either of the others is accepted — it adds no table and
+changes none.
+
+**A crew placement is a `decision_records` row and nothing else moves** (REQ-F-005, TASK-007).
+`kind` has permitted `'placement'` since migration 006 with no writer, no reader and no decided
+shape; **CHG-029** decides it, and migration **012** puts the rule in the store: a `before insert`
+trigger that refuses a placement naming an asset that is not on the ranking it claims to have been
+made against. It is a trigger rather than a `check` because adding a check to `decision_records`
+means rebuilding the table, and that drops both append-only triggers — which ADR-004 forbids and
+008 already routed around. **012 must be rolled back before 011 and not after**: it reads
+`risk_scores`, 011 rebuilds that table, and a SQLite rename reparses every trigger in the schema.
 
 **Four reviews across two tasks have each found something the previous one did not, and every
 one of them was found by a directed mutation rather than by the gate.** 323 tests, six fitness
@@ -64,8 +74,8 @@ touching a line of code. Where a rule decides an *order*, a *resolution* or a *g
 fixture has to be one in which the wrong answers are different answers.
 
 **The gate is five commands, and the test suite is only one of them:**
-`pytest` (346) · `ruff` · `ci/fitness.py` (6 of 7 wired) · `ci/evals.py` (the quality floor) ·
-`playwright` (17, real Chromium against both processes).
+`pytest` (386) · `ruff` · `ci/fitness.py` (6 of 7 wired) · `ci/evals.py` (the quality floor) ·
+`playwright` (21, real Chromium against both processes).
 
 **Run the suite more than once before calling the gate green.** Five of fifteen clean runs were
 red before migration 008, from one root cause, and a suite run once looks green half the time.
@@ -113,7 +123,7 @@ ranking names one of its own storm's forecasts; and `(asset_id, scenario_id) →
 The foreign key on `(scenario_id, forecast_revision)` is **declined in writing** in CHG-028: it
 makes rolling 010 back destroy every stored ranking.
 
-**Thirteen change entries are `proposed` and await a human decision** — the first that were not
+**Fourteen change entries are `proposed` and await a human decision** — the first that were not
 self-accepted: **CHG-016** (no endpoint created a damage report, so AC-007 could not occur),
 **CHG-017** (`repair_jobs.location_key`, and the resolution of `damage_reports.location`),
 **CHG-018** (a monotonic `seq` — a timestamp is not a total order), **CHG-019** (composite
@@ -124,8 +134,10 @@ board and in the area figure), **CHG-023** (normalisation and the single bound, 
 **CHG-024** (a report whose asset is deleted — the cascade kept, the alternatives recorded),
 **CHG-025** (a scenario's forecast series had nowhere to live, and nothing decided what "the
 next forecast change" is), **CHG-026** (`risk_scores` had no enforcement of *never rewrites n*),
-**CHG-027** (a forecast that exists is not a revision that can be read back) and **CHG-028**
-(three invariants on `risk_scores` the store could hold and did not). All are built except
+**CHG-027** (a forecast that exists is not a revision that can be read back), **CHG-028**
+(three invariants on `risk_scores` the store could hold and did not) and **CHG-029**
+(`'placement'` was an enumerated value with no writer, no reader and no shape, and
+*traceable to the ranking* had nowhere to live). All are built except
 CHG-024, which is a record rather than a change; none is accepted.
 
 Seven change entries have been raised from implementation, all accepted: **CHG-008** (a
@@ -240,7 +252,7 @@ python -m venv .venv
 cd frontend && npm install
 
 # the gate — the suite is NOT the gate on its own
-.venv/Scripts/python.exe -m pytest                       # 346 tests, 1 skipped
+.venv/Scripts/python.exe -m pytest                       # 386 tests, 1 skipped
 .venv/Scripts/python.exe -m ruff check backend spec/03-tests/05-executable ci
 .venv/Scripts/python.exe ci/fitness.py                   # FF-001, FF-002, FF-006
 cd frontend && npx tsc --noEmit && npm run lint && npm run build

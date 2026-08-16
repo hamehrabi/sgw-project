@@ -16,6 +16,14 @@ assumed.*
   table*. Migrations roll back in reverse order for exactly this reason, and the round trip
   below walks both directions rather than asserting the rule in a comment.
 
+**012 joined the stack for the same reason 011 is in it, and it is why this file changed under
+TASK-007.** `decision_records_placement_shape` reads `risk_scores`, and 011 **rebuilds** that
+table — `drop table` then `alter table … rename to`. Since SQLite 3.25 a rename reparses every
+trigger in the schema to fix up its references, so with 012 still applied the rename lands in the
+window where `risk_scores` does not exist and 011 fails outright, up or down. That is the
+ordinary reverse-order rule reaching one migration further, and `test_TASK-007-AC10` asserts the
+wrong order fails rather than leaving it to be met during an incident.
+
 The backfill and the rollback are tested together because each is the other's setup: rolling the
 pair back and forward again over a loaded storm is the whole trip, and it is also the closest
 thing available to the real upgrade — a database that held storms before these migrations existed.
@@ -41,6 +49,9 @@ TRIGGERS = ("decision_records_no_update", "decision_records_no_delete")
 
 TEN = "010_forecast_revisions"
 ELEVEN = "011_risk_scores_belong_to_a_revision"
+# Newer than both, and it has to come off before either of them: its trigger reads
+# `risk_scores`, which 011 rebuilds by dropping and renaming.
+TWELVE = "012_a_placement_is_traceable"
 
 # The fixture's manifest says the advisory was issued at 21:00 on the 14th; its earliest
 # forecast is valid from 00:00 on the 15th. **They are deliberately different strings**, and
@@ -76,18 +87,24 @@ def roll_back(connection, name: str) -> None:
     connection.commit()
 
 
-def roll_back_the_pair(connection) -> None:
+def roll_back_the_stack(connection) -> None:
     """**Newest first.** 011's insert guard reads a table 010 creates; taking 010 out from
     underneath it leaves the guard pointing at nothing, and the next ranking written to that
-    database fails."""
+    database fails. 012's placement guard reads the table 011 **rebuilds**, so it has to come off
+    before 011 for the rebuild's rename to resolve at all."""
+    roll_back(connection, TWELVE)
     roll_back(connection, ELEVEN)
     roll_back(connection, TEN)
 
 
-def roll_forward_the_pair(connection) -> None:
+def roll_forward_the_stack(connection) -> None:
     from app.store import migrate
 
-    assert migrate.run(connection) == [f"{TEN}.up.sql", f"{ELEVEN}.up.sql"]
+    assert migrate.run(connection) == [
+        f"{TEN}.up.sql",
+        f"{ELEVEN}.up.sql",
+        f"{TWELVE}.up.sql",
+    ]
 
 
 def test_the_down_migrations_run_and_leave_both_append_only_triggers_in_place(
@@ -100,7 +117,7 @@ def test_the_down_migrations_run_and_leave_both_append_only_triggers_in_place(
     client.get(f"/api/v1/scenarios/{scenario_id}/risks")
     assert TRIGGERS[0] in objects(connection, "trigger")
 
-    roll_back_the_pair(connection)
+    roll_back_the_stack(connection)
 
     tables = objects(connection, "table")
     assert not [name for name in TABLES if name in tables]
@@ -136,9 +153,9 @@ def test_the_round_trip_keeps_every_stored_ranking_and_the_wrong_order_does_not(
     before = connection.execute("select count(*) from risk_scores").fetchone()[0]
     assert before, "no rankings are stored, so 'kept' would be vacuous"
 
-    roll_back_the_pair(connection)
+    roll_back_the_stack(connection)
     assert connection.execute("select count(*) from risk_scores").fetchone()[0] == before
-    roll_forward_the_pair(connection)
+    roll_forward_the_stack(connection)
     assert connection.execute("select count(*) from risk_scores").fetchone()[0] == before
     # And the database is still one a ranking can be written to, not merely read from — a whole
     # storm loaded after the trip, series and ranking, through the guard 011 puts in front of
@@ -190,8 +207,8 @@ def test_a_storm_loaded_before_the_migration_gets_its_revision_zero_backfilled(
     }
     assert cells_before, "revision 0 carries no cells, so the comparison below is vacuous"
 
-    roll_back_the_pair(connection)
-    roll_forward_the_pair(connection)
+    roll_back_the_stack(connection)
+    roll_forward_the_stack(connection)
 
     backfilled = connection.execute(
         "select forecast_revision, valid_time from scenario_forecast_revisions"
@@ -248,8 +265,8 @@ def test_the_backfill_dates_revision_zero_from_the_manifest_and_the_loader_does_
         == MANIFEST_ISSUED_AT
     )
 
-    roll_back_the_pair(connection)
-    roll_forward_the_pair(connection)
+    roll_back_the_stack(connection)
+    roll_forward_the_stack(connection)
 
     after = connection.execute(
         "select valid_time from scenario_forecast_revisions"
@@ -289,8 +306,8 @@ def test_the_later_forecasts_do_not_come_back_and_the_endpoint_says_so(
     connection = application.state.db
     scenario_id = load(client, accounts)
 
-    roll_back_the_pair(connection)
-    roll_forward_the_pair(connection)
+    roll_back_the_stack(connection)
+    roll_forward_the_stack(connection)
 
     scenario = client.get(f"/api/v1/scenarios/{scenario_id}").json()
     assert scenario["forecast_revisions"] == [
@@ -322,7 +339,7 @@ def test_the_stored_ranking_is_rewritable_again_once_the_pair_is_rolled_back(
         connection.commit()
     connection.rollback()
 
-    roll_back_the_pair(connection)
+    roll_back_the_stack(connection)
 
     connection.execute("update risk_scores set rank = 1 where id = ?", (scored["id"],))
     connection.commit()
@@ -342,6 +359,10 @@ def test_rolling_eleven_back_alone_reinstates_only_its_own_guarantees(
 
     Asserted because a down migration that removes more than its up migration added is the same
     class of failure as one that removes a `decision_records` trigger — it is just quieter.
+
+    012 comes off first, because it is newer and because 011 rebuilds the table its trigger
+    reads. What that rollback removes is asserted by `test_TASK-007-AC10`, not here; taking it
+    off is the reverse-order rule and nothing more.
     """
     connection = application.state.db
     scenario_id = load(client, accounts)
@@ -349,6 +370,7 @@ def test_rolling_eleven_back_alone_reinstates_only_its_own_guarantees(
         "select asset_id from risk_scores where scenario_id = ? limit 1", (scenario_id,)
     ).fetchone()["asset_id"]
 
+    roll_back(connection, TWELVE)
     roll_back(connection, ELEVEN)
 
     assert "risk_scores_no_update" in objects(connection, "trigger")
